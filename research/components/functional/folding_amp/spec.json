@@ -1,0 +1,53 @@
+{
+  "name": "Folding Amplifier",
+  "type": "nonlinear_waveshaper",
+  "description": "Nonlinear waveshaper that folds signal back on itself when exceeding thresholds",
+
+  "behavior": {
+    "summary": "Instead of clipping when signal exceeds bounds, the signal 'folds' back creating triangle-wave-like response",
+    "visual_effect": "Bright areas wrap to dark, creates banding/contouring effects",
+    "audio_analog": "Similar to wavefolder in audio synthesis - adds harmonics through folding"
+  },
+
+  "transfer_function": {
+    "type": "piecewise_linear_fold",
+    "basic_equation": "fold(x) = |2 * fract(x/2) - 1|",
+    "with_gain": "fold(x, g) = |2 * fract(x*g/2) - 1|",
+    "soft_fold": "Uses tanh or sine for rounded fold corners",
+    "parameters": {
+      "gain": "Amplification before folding (controls number of folds)",
+      "symmetry": "Fold point offset (0.5 = symmetric)",
+      "softness": "Corner rounding (0 = hard triangle, 1 = sine-like)"
+    }
+  },
+
+  "implementations": {
+    "paik_abe": {
+      "description": "Discrete transistor folding using differential pairs",
+      "components": ["2N3904", "1N4148", "resistor network"],
+      "characteristics": "Soft folding with slight asymmetry"
+    },
+    "serge": {
+      "description": "Multiple cascaded folding stages",
+      "characteristics": "Very sharp folds, many harmonics"
+    },
+    "buchla": {
+      "description": "Sine-shaping wavefolder",
+      "characteristics": "Smooth, rounded folds"
+    }
+  },
+
+  "applications": [
+    "Video posterization with wrap-around",
+    "Luminance-to-color mapping enhancement",
+    "Edge enhancement through fold artifacts",
+    "Psychedelic color cycling effects"
+  ],
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer",
+    "Sandin Image Processor",
+    "Serge Modular (audio)",
+    "Buchla 259 (audio)"
+  ]
+}

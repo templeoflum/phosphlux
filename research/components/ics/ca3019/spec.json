@@ -1,0 +1,61 @@
+{
+  "name": "CA3019",
+  "type": "diode_array",
+  "manufacturer": "RCA/Intersil",
+  "description": "Ultra-fast low-capacitance matched diodes (6 diodes: quad + 2 individual)",
+  "package": "TO-99-10 (10-pin metal can)",
+
+  "specs": {
+    "diode_count": 6,
+    "configuration": "4 matched quad + 2 individual",
+    "vf_typical_v": 0.65,
+    "vf_match_mv": 2,
+    "capacitance_pf": 1.5,
+    "reverse_recovery_ns": 4,
+    "ir_max_na": 100,
+    "if_max_ma": 50,
+    "vr_max_v": 15
+  },
+
+  "pinout": {
+    "1": "Diode 1 Anode",
+    "2": "Diode 1 Cathode / Diode 2 Anode",
+    "3": "Diode 2 Cathode",
+    "4": "Diode 3 Anode",
+    "5": "Common Cathode (Quad)",
+    "6": "Diode 4 Anode",
+    "7": "Diode 5 Anode",
+    "8": "Diode 5 Cathode / Diode 6 Anode",
+    "9": "Diode 6 Cathode",
+    "10": "Substrate (connect to most negative)"
+  },
+
+  "transfer_function": {
+    "type": "exponential",
+    "equation": "I = Is * (exp(V / (n * Vt)) - 1)",
+    "parameters": {
+      "Is": 1e-14,
+      "n": 1.0,
+      "Vt": 0.026,
+      "Vf": 0.65
+    },
+    "notes": "Matched diodes ensure precise threshold detection within 2mV"
+  },
+
+  "amplitude_window_function": {
+    "description": "Creates sharp amplitude windows by using matched diode pairs as threshold detectors",
+    "equation": "window(signal, low, high) = diode_on(signal - low) * diode_on(high - signal)",
+    "notes": "Sharp transitions at thresholds due to exponential diode characteristic"
+  },
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer - Burst Generator (page 27)",
+    "Paik/Abe Video Synthesizer - PED Control / Colorizer (page 28)"
+  ],
+
+  "sources": [
+    "Paik-Abe Video Synthesizer Technical Documentation",
+    "Intersil CA3019 Datasheet",
+    "1978 RCA Linear IC Databook"
+  ]
+}

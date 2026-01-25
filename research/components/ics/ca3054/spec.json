@@ -1,0 +1,67 @@
+{
+  "name": "CA3054",
+  "type": "dual_differential_amplifier",
+  "manufacturer": "RCA/Intersil",
+  "description": "Dual Differential Amplifier - Two independent matched diff amp stages",
+  "package": "TO-5 (8-pin metal can) or 14-pin DIP",
+
+  "specs": {
+    "supply_voltage_max": 12,
+    "supply_voltage_min": 6,
+    "input_offset_voltage_mv": 5,
+    "input_bias_current_ua": 1.5,
+    "open_loop_gain_db": 80,
+    "bandwidth_mhz": 6,
+    "slew_rate_v_us": 10,
+    "cmrr_db": 80,
+    "output_swing_v": 4
+  },
+
+  "pinout": {
+    "1": "Amp1 Output",
+    "2": "Amp1 V-",
+    "3": "Amp1 V+",
+    "4": "V-",
+    "5": "Amp2 V+",
+    "6": "Amp2 V-",
+    "7": "Amp2 Output",
+    "8": "V+"
+  },
+
+  "internal_structure": {
+    "amplifiers": 2,
+    "transistors_per_amp": 4,
+    "current_sources": 2,
+    "description": "Each diff amp consists of matched differential pair with active load current mirror"
+  },
+
+  "transfer_function": {
+    "type": "differential_amplifier",
+    "equation": "Vout = A * (V+ - V-) where A = gm * Rload",
+    "diff_pair_transfer": "Iout = Itail * tanh((V+ - V-) / (2 * Vt))",
+    "parameters": {
+      "Vt": 0.026,
+      "gm_typical": 0.02,
+      "Itail_typical_ma": 1.0
+    }
+  },
+
+  "applications": [
+    "Video keying circuits",
+    "Matrix mixing amplifiers",
+    "Signal summing",
+    "Comparator with hysteresis",
+    "Voltage-controlled amplifier"
+  ],
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer (Page 19 - Keying Circuit)"
+  ],
+
+  "notes": [
+    "Two independent amplifiers allow for complex signal routing",
+    "Matched transistors minimize offset drift",
+    "Can be configured for hard or soft keying",
+    "Commonly used with CA3046 for complete keying systems"
+  ]
+}

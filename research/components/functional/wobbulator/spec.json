@@ -1,0 +1,68 @@
+{
+  "name": "Wobbulator",
+  "type": "scan_modulator",
+  "description": "CRT scan deflection modulator - displaces horizontal and vertical raster position",
+  "origin": "Nam June Paik modified television sets by adding magnets and oscillators to deflection coils",
+
+  "behavior": {
+    "summary": "Modulates the X/Y position of scan lines creating warping, wobbling, and displacement effects",
+    "horizontal": "H-rate modulation creates vertical bands of displacement",
+    "vertical": "V-rate modulation creates horizontal bands of displacement",
+    "video_rate": "Using video signal as modulator creates luminance-dependent warping"
+  },
+
+  "modulation_sources": {
+    "internal_oscillator": {
+      "description": "Built-in sine/triangle oscillators",
+      "frequency_range_hz": [0.1, 1000],
+      "waveforms": ["sine", "triangle", "square", "sawtooth"]
+    },
+    "video_signal": {
+      "description": "Luminance of input video drives displacement",
+      "effect": "Bright areas push outward, dark areas pull inward (or inverse)"
+    },
+    "external_cv": {
+      "description": "Control voltage input for modular patching",
+      "range": "0-1V typical"
+    }
+  },
+
+  "parameters": {
+    "h_frequency": "Horizontal modulation frequency (Hz)",
+    "h_amplitude": "Horizontal displacement amount",
+    "h_phase": "Horizontal phase offset",
+    "v_frequency": "Vertical modulation frequency (Hz)",
+    "v_amplitude": "Vertical displacement amount",
+    "v_phase": "Vertical phase offset",
+    "video_mod_h": "Video signal modulation of H displacement",
+    "video_mod_v": "Video signal modulation of V displacement"
+  },
+
+  "transfer_function": {
+    "type": "displacement_mapping",
+    "equation_h": "x' = x + amplitude_h * sin(2π * freq_h * y + phase_h) + video_mod_h * luminance(x,y)",
+    "equation_v": "y' = y + amplitude_v * sin(2π * freq_v * x + phase_v) + video_mod_v * luminance(x,y)",
+    "notes": "Original CRT wobbulator affected electromagnetic deflection coils"
+  },
+
+  "visual_effects": [
+    "Vertical ripples/waves",
+    "Horizontal ripples/waves",
+    "Barrel/pincushion distortion",
+    "Luminance-dependent warping",
+    "Feedback loops when output feeds modulation"
+  ],
+
+  "historical_notes": [
+    "Paik created first wobbulator by placing magnets on TV CRT",
+    "Abe refined technique with electronic oscillator modulation",
+    "Key to 'Global Groove' and other Paik video art pieces",
+    "Later refined by Rutt/Etra for Z-axis displacement"
+  ],
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer",
+    "Modified television sets (Paik's 'Prepared TVs')",
+    "Video feedback systems"
+  ]
+}
