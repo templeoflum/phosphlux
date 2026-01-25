@@ -96,6 +96,7 @@ impl NodeType {
     }
 
     /// Returns true if this node is a display/render target
+    #[allow(dead_code)]
     pub fn is_display(&self) -> bool {
         matches!(self, NodeType::Monitor | NodeType::CrtDisplay)
     }
@@ -170,6 +171,7 @@ impl NodeType {
     }
 
     /// Get input port names for this node type
+    #[allow(dead_code)]
     pub fn input_names(&self) -> &'static [&'static str] {
         match self {
             // No inputs
@@ -230,7 +232,17 @@ impl SignalNode {
                 params.insert("clip_white".to_string(), 0.8);
             }
             NodeType::Mixer => {
-                params.insert("mix".to_string(), 0.5);
+                // Fader: 0.0 = full A, 1.0 = full B
+                params.insert("fader".to_string(), 0.5);
+                // Blend mode: 0=Mix, 1=Add, 2=Multiply, 3=Screen, 4=Overlay,
+                //             5=Difference, 6=LumaKeyA, 7=LumaKeyB
+                params.insert("blend_mode".to_string(), 0.0);
+                // Luma key threshold (for LumaKey modes)
+                params.insert("key_threshold".to_string(), 0.5);
+                // Luma key softness/edge (0=hard, 1=soft)
+                params.insert("key_softness".to_string(), 0.1);
+                // Key invert (0=normal, 1=inverted)
+                params.insert("key_invert".to_string(), 0.0);
             }
             NodeType::HueShift => {
                 params.insert("amount".to_string(), 0.0);
@@ -389,11 +401,13 @@ impl SignalPatch {
     }
 
     /// Serialize to JSON for saving
+    #[allow(dead_code)]
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 
     /// Deserialize from JSON for loading
+    #[allow(dead_code)]
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }

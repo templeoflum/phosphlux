@@ -6,6 +6,11 @@
 //!
 //! NTSC: 525 lines, 59.94 Hz, 15.734 kHz horizontal
 //! PAL:  625 lines, 50 Hz, 15.625 kHz horizontal
+//!
+//! Note: Some methods are currently unused but provide foundational timing
+//! calculations for future features (e.g., interlacing, PAL support).
+
+#![allow(dead_code)]
 
 use bytemuck::{Pod, Zeroable};
 

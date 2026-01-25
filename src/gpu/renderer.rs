@@ -93,6 +93,117 @@ impl Default for SynthUniforms {
     }
 }
 
+/// Maximum number of frame buffer nodes supported
+pub const MAX_FRAME_BUFFER_NODES: usize = 4;
+
+/// A single frame buffer's ping-pong texture pair
+pub struct FrameBufferTexturePair {
+    pub textures: [wgpu::Texture; 2],
+    pub views: [wgpu::TextureView; 2],
+    pub bind_groups: [wgpu::BindGroup; 2],
+    pub current_index: usize,
+    pub node_id: u32,
+}
+
+impl FrameBufferTexturePair {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        index: usize,
+        node_id: u32,
+    ) -> Self {
+        let texture_desc = wgpu::TextureDescriptor {
+            label: Some(&format!("FrameBuffer {} Texture A", index)),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+
+        let tex_a = device.create_texture(&texture_desc);
+        let tex_b = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("FrameBuffer {} Texture B", index)),
+            ..texture_desc
+        });
+
+        let view_a = tex_a.create_view(&wgpu::TextureViewDescriptor::default());
+        let view_b = tex_b.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("FrameBuffer {} Bind Group A", index)),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view_a),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+
+        let bind_group_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("FrameBuffer {} Bind Group B", index)),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view_b),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+
+        Self {
+            textures: [tex_a, tex_b],
+            views: [view_a, view_b],
+            bind_groups: [bind_group_a, bind_group_b],
+            current_index: 0,
+            node_id,
+        }
+    }
+
+    /// Get the read texture view (previous frame)
+    #[allow(dead_code)]
+    pub fn read_view(&self) -> &wgpu::TextureView {
+        &self.views[self.current_index]
+    }
+
+    /// Get the read bind group (previous frame)
+    pub fn read_bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_groups[self.current_index]
+    }
+
+    /// Get the write texture view (current frame destination)
+    pub fn write_view(&self) -> &wgpu::TextureView {
+        &self.views[1 - self.current_index]
+    }
+
+    /// Swap read/write buffers at end of frame
+    pub fn swap(&mut self) {
+        self.current_index = 1 - self.current_index;
+    }
+}
+
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -109,17 +220,26 @@ pub struct Renderer {
     feedback_buffer: wgpu::Buffer,
     synth_buffer: wgpu::Buffer,
 
-    // Ping-pong feedback textures
-    feedback_textures: [wgpu::Texture; 2],
-    feedback_views: [wgpu::TextureView; 2],
-    feedback_bind_groups: [wgpu::BindGroup; 2],
+    // Per-node Frame Buffer textures (replaces the old single feedback texture pair)
+    frame_buffer_textures: Vec<FrameBufferTexturePair>,
     feedback_sampler: wgpu::Sampler,
-    current_feedback_index: usize,
+
+    // Legacy: keep one feedback texture pair for backwards compatibility
+    // This is used when there are no Frame Buffer nodes in the graph
+    legacy_feedback_textures: [wgpu::Texture; 2],
+    legacy_feedback_views: [wgpu::TextureView; 2],
+    legacy_feedback_bind_groups: [wgpu::BindGroup; 2],
+    legacy_feedback_index: usize,
 
     // Bind group layouts (needed for recreation on resize)
+    #[allow(dead_code)]
     timing_bind_group_layout: wgpu::BindGroupLayout,
     feedback_bind_group_layout: wgpu::BindGroupLayout,
     timing_bind_group: wgpu::BindGroup,
+
+    // Node graph bind group layout (kept for potential future bind group recreation)
+    #[allow(dead_code)]
+    graph_bind_group_layout: wgpu::BindGroupLayout,
 
     // Output texture for egui display (paned layout)
     output_texture: wgpu::Texture,
@@ -133,7 +253,6 @@ pub struct Renderer {
     // Node graph compilation
     graph_header_buffer: wgpu::Buffer,
     graph_ops_buffer: wgpu::Buffer,
-    graph_bind_group_layout: wgpu::BindGroupLayout,
     graph_bind_group: wgpu::BindGroup,
     compiled_graph: CompiledGraph,
 }
@@ -314,9 +433,13 @@ impl Renderer {
             ..Default::default()
         });
 
-        // Create ping-pong feedback textures (must match surface format)
-        let (feedback_textures, feedback_views, feedback_bind_groups) =
+        // Create legacy ping-pong feedback textures for backwards compatibility
+        // These are used when there are no Frame Buffer nodes in the graph
+        let (legacy_feedback_textures, legacy_feedback_views, legacy_feedback_bind_groups) =
             Self::create_feedback_textures(&device, &feedback_bind_group_layout, &feedback_sampler, size.width.max(1), size.height.max(1), surface_format);
+
+        // Per-node Frame Buffer textures (initially empty, populated when graph is compiled)
+        let frame_buffer_textures = Vec::new();
 
         // Create graph buffers for node-based synthesis
         let compiled_graph = CompiledGraph::default_fallback();
@@ -464,11 +587,12 @@ impl Renderer {
             timing_buffer,
             feedback_buffer,
             synth_buffer,
-            feedback_textures,
-            feedback_views,
-            feedback_bind_groups,
+            frame_buffer_textures,
             feedback_sampler,
-            current_feedback_index: 0,
+            legacy_feedback_textures,
+            legacy_feedback_views,
+            legacy_feedback_bind_groups,
+            legacy_feedback_index: 0,
             timing_bind_group_layout,
             feedback_bind_group_layout,
             timing_bind_group,
@@ -586,6 +710,7 @@ impl Renderer {
     }
 
     /// Get reference to queue (for egui)
+    #[allow(dead_code)]
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
@@ -595,6 +720,9 @@ impl Renderer {
         use crate::gpu::graph_compiler::GraphCompiler;
 
         self.compiled_graph = GraphCompiler::compile(patch);
+
+        // Create/update per-node frame buffer textures based on compiled graph
+        self.update_frame_buffer_textures();
 
         // Upload header
         self.queue.write_buffer(
@@ -609,6 +737,46 @@ impl Renderer {
             0,
             bytemuck::cast_slice(&self.compiled_graph.ops),
         );
+    }
+
+    /// Update frame buffer textures to match the compiled graph
+    fn update_frame_buffer_textures(&mut self) {
+        let needed_count = self.compiled_graph.frame_buffers.len();
+        let current_count = self.frame_buffer_textures.len();
+
+        // Check if we need to recreate (count changed or node IDs changed)
+        let mut needs_recreate = needed_count != current_count;
+        if !needs_recreate {
+            for (i, fb_info) in self.compiled_graph.frame_buffers.iter().enumerate() {
+                if i >= self.frame_buffer_textures.len()
+                    || self.frame_buffer_textures[i].node_id != fb_info.node_id
+                {
+                    needs_recreate = true;
+                    break;
+                }
+            }
+        }
+
+        if needs_recreate {
+            // Recreate frame buffer textures
+            self.frame_buffer_textures.clear();
+            for (i, fb_info) in self.compiled_graph.frame_buffers.iter().enumerate() {
+                if i >= MAX_FRAME_BUFFER_NODES {
+                    log::warn!("Too many frame buffer nodes, max is {}", MAX_FRAME_BUFFER_NODES);
+                    break;
+                }
+                self.frame_buffer_textures.push(FrameBufferTexturePair::new(
+                    &self.device,
+                    &self.feedback_bind_group_layout,
+                    &self.feedback_sampler,
+                    self.size.width.max(1),
+                    self.size.height.max(1),
+                    self.config.format,
+                    i,
+                    fb_info.node_id,
+                ));
+            }
+        }
     }
 
     /// Update only node parameters without recompiling the graph structure
@@ -642,6 +810,7 @@ impl Renderer {
     }
 
     /// Get the output texture size
+    #[allow(dead_code)]
     pub fn output_size(&self) -> (u32, u32) {
         self.output_size
     }
@@ -671,21 +840,33 @@ impl Renderer {
         self.queue.write_buffer(&self.feedback_buffer, 0, bytemuck::cast_slice(&[self.feedback]));
         self.queue.write_buffer(&self.synth_buffer, 0, bytemuck::cast_slice(&[self.synth]));
 
-        // Determine which feedback buffer to read from and write to
-        let read_index = self.current_feedback_index;
-        let write_index = 1 - self.current_feedback_index;
+        // Use per-node frame buffers if available, otherwise use legacy
+        let (read_bind_group, write_view, write_texture) = if !self.frame_buffer_textures.is_empty() {
+            // Use first frame buffer node's texture (multiple FB support TODO)
+            let fb = &self.frame_buffer_textures[0];
+            (fb.read_bind_group(), fb.write_view(), &fb.textures[1 - fb.current_index])
+        } else {
+            // Legacy: use single global feedback texture
+            let read_index = self.legacy_feedback_index;
+            let write_index = 1 - self.legacy_feedback_index;
+            (
+                &self.legacy_feedback_bind_groups[read_index],
+                &self.legacy_feedback_views[write_index],
+                &self.legacy_feedback_textures[write_index],
+            )
+        };
 
         // Create command encoder
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render To Texture Encoder"),
         });
 
-        // Pass 1: Render to feedback texture (write_index)
+        // Pass 1: Render to feedback texture (write buffer)
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Feedback Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.feedback_views[write_index],
+                    view: write_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -699,7 +880,7 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
+            render_pass.set_bind_group(1, read_bind_group, &[]);
             render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
@@ -712,7 +893,7 @@ impl Renderer {
             // Fast path: direct GPU copy (no shader invocation)
             encoder.copy_texture_to_texture(
                 wgpu::ImageCopyTexture {
-                    texture: &self.feedback_textures[write_index],
+                    texture: write_texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -731,6 +912,15 @@ impl Renderer {
             );
         } else {
             // Slow path: re-render when sizes differ (needed for aspect ratio scaling)
+            // Need to get the write bind group for this
+            let write_bind_group = if !self.frame_buffer_textures.is_empty() {
+                let fb = &self.frame_buffer_textures[0];
+                &fb.bind_groups[1 - fb.current_index]
+            } else {
+                let write_index = 1 - self.legacy_feedback_index;
+                &self.legacy_feedback_bind_groups[write_index]
+            };
+
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Output Texture Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -748,14 +938,20 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
+            render_pass.set_bind_group(1, write_bind_group, &[]);
             render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
 
         // Swap buffers
-        self.current_feedback_index = write_index;
+        if !self.frame_buffer_textures.is_empty() {
+            for fb in &mut self.frame_buffer_textures {
+                fb.swap();
+            }
+        } else {
+            self.legacy_feedback_index = 1 - self.legacy_feedback_index;
+        }
 
         // Submit
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -768,7 +964,7 @@ impl Renderer {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
 
-            // Recreate feedback textures at new size
+            // Recreate legacy feedback textures at new size
             let (textures, views, bind_groups) = Self::create_feedback_textures(
                 &self.device,
                 &self.feedback_bind_group_layout,
@@ -777,89 +973,25 @@ impl Renderer {
                 new_size.height,
                 self.config.format,
             );
-            self.feedback_textures = textures;
-            self.feedback_views = views;
-            self.feedback_bind_groups = bind_groups;
+            self.legacy_feedback_textures = textures;
+            self.legacy_feedback_views = views;
+            self.legacy_feedback_bind_groups = bind_groups;
+
+            // Recreate per-node frame buffer textures at new size
+            let old_textures = std::mem::take(&mut self.frame_buffer_textures);
+            for (i, old_fb) in old_textures.into_iter().enumerate() {
+                self.frame_buffer_textures.push(FrameBufferTexturePair::new(
+                    &self.device,
+                    &self.feedback_bind_group_layout,
+                    &self.feedback_sampler,
+                    new_size.width,
+                    new_size.height,
+                    self.config.format,
+                    i,
+                    old_fb.node_id,
+                ));
+            }
         }
-    }
-
-    pub fn render(&mut self, timing: TimingUniforms) -> Result<(), wgpu::SurfaceError> {
-        // Update uniforms
-        self.queue.write_buffer(&self.timing_buffer, 0, bytemuck::cast_slice(&[timing]));
-        self.queue.write_buffer(&self.feedback_buffer, 0, bytemuck::cast_slice(&[self.feedback]));
-        self.queue.write_buffer(&self.synth_buffer, 0, bytemuck::cast_slice(&[self.synth]));
-
-        // Get output texture
-        let output = self.surface.get_current_texture()?;
-        let output_view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // Determine which feedback buffer to read from and write to
-        let read_index = self.current_feedback_index;
-        let write_index = 1 - self.current_feedback_index;
-
-        // Create command encoder
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
-
-        // Pass 1: Render to feedback texture (write_index)
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Feedback Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.feedback_views[write_index],
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
-            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..6, 0..1);
-        }
-
-        // Pass 2: Copy feedback texture to screen
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Screen Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &output_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
-            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..6, 0..1);
-        }
-
-        // Swap buffers
-        self.current_feedback_index = write_index;
-
-        // Submit
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-
-        Ok(())
     }
 
     /// Render with egui overlay
@@ -881,21 +1013,35 @@ impl Renderer {
         let output = self.surface.get_current_texture()?;
         let output_view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Determine which feedback buffer to read from and write to
-        let read_index = self.current_feedback_index;
-        let write_index = 1 - self.current_feedback_index;
+        // Use per-node frame buffers if available, otherwise use legacy
+        let (read_bind_group, write_view, write_bind_group) = if !self.frame_buffer_textures.is_empty() {
+            let fb = &self.frame_buffer_textures[0];
+            (
+                fb.read_bind_group(),
+                fb.write_view(),
+                &fb.bind_groups[1 - fb.current_index],
+            )
+        } else {
+            let read_index = self.legacy_feedback_index;
+            let write_index = 1 - self.legacy_feedback_index;
+            (
+                &self.legacy_feedback_bind_groups[read_index],
+                &self.legacy_feedback_views[write_index],
+                &self.legacy_feedback_bind_groups[write_index],
+            )
+        };
 
         // Create command encoder
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
 
-        // Pass 1: Render to feedback texture (write_index)
+        // Pass 1: Render to feedback texture (write buffer)
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Feedback Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.feedback_views[write_index],
+                    view: write_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -909,7 +1055,7 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
+            render_pass.set_bind_group(1, read_bind_group, &[]);
             render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
@@ -934,14 +1080,20 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
+            render_pass.set_bind_group(1, write_bind_group, &[]);
             render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
 
         // Swap buffers
-        self.current_feedback_index = write_index;
+        if !self.frame_buffer_textures.is_empty() {
+            for fb in &mut self.frame_buffer_textures {
+                fb.swap();
+            }
+        } else {
+            self.legacy_feedback_index = 1 - self.legacy_feedback_index;
+        }
 
         // Handle egui texture updates
         for (id, image_delta) in &textures_delta.set {

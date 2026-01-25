@@ -326,18 +326,20 @@ Multiple operations required careful two-pass approaches:
 - Colorization modes (spectrum, threshold, grayscale)
 - CRT emulation (scanlines, curvature, vignette)
 - Professional paned layout UI
-- Preset system (5 presets)
 - **Visual node editor with full connection management**
 - **Aspect ratio locked preview**
 - **GPU-compiled node graph execution**
 - **Real-time parameter adjustment**
+- **Per-node Frame Buffer textures for feedback**
+- **Mixer with blend modes and luma keying**
 
 ### Architecture Strengths
 - Clean separation: timing (CPU) → uniforms → shaders (GPU)
 - Ping-pong feedback buffers for stable recursion
 - Type-safe parameter binding via uniform structs
-- **Graph compiler with topological sort for correct execution order**
+- **Graph compiler with topological sort and cycle-aware compilation**
 - **Storage buffer pipeline for dynamic operation dispatch**
+- **Per-node temporal textures for independent feedback loops**
 
 ---
 
@@ -448,6 +450,7 @@ This allows single `queue.write_buffer()` call per frame.
 - **v0.4**: Paned layout redesign + renamed to **Phosphlux**
 - **v0.5**: Visual node editor with full UX
 - **v0.6**: GPU signal routing — node graph compiles to GPU operations
+- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
 
 ---
 
@@ -456,14 +459,45 @@ This allows single `queue.write_buffer()` call per frame.
 | File | Purpose |
 |------|---------|
 | `src/main.rs` | Application entry, event loop, 4-panel layout |
-| `src/gpu/renderer.rs` | wgpu setup, shader pipeline, feedback buffers, graph upload |
-| `src/gpu/graph_compiler.rs` | Topological sort, node→GPU operation compilation |
-| `src/shaders/main.wgsl` | Combined synthesis shader + graph evaluation |
+| `src/gpu/renderer.rs` | wgpu setup, per-node Frame Buffer textures, graph upload |
+| `src/gpu/graph_compiler.rs` | Cycle-aware topological sort, node→GPU operation compilation |
+| `src/shaders/main.wgsl` | Combined synthesis shader + graph evaluation + blend modes |
 | `src/core/timing.rs` | NTSC/PAL sync generation |
-| `src/ui/controls.rs` | Parameter structures (SynthParams) |
+| `src/core/signal.rs` | Signal types and voltage standards (foundational) |
 | `src/ui/patch.rs` | Node graph data (SignalPatch, SignalNode, Connection) |
-| `src/ui/node_editor.rs` | Visual node editor (NodeEditor, AspectRatio) |
+| `src/ui/node_editor.rs` | Visual node editor (NodeEditor, AspectRatio, Inspector) |
 | `docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md` | Research document |
+| `docs/ANALOG_ROUTING_ARCHITECTURE.md` | Per-node feedback architecture design |
+
+---
+
+## Phase 7: Analog Routing Architecture
+
+### The Problem with Global Effects
+Previous architecture had global feedback and CRT parameters that applied uniformly. Real analog synthesizers have:
+- Multiple independent feedback paths
+- Per-channel mixing with various blend modes
+- Structure for feedback to "grab onto" (pure feedback fades to nothing)
+
+### Solution: Per-Node Temporal Textures
+
+**Frame Buffer Nodes:**
+- Each Frame Buffer node gets its own ping-pong texture pair
+- Parameters (zoom, rotation, hue shift, decay, etc.) are per-node
+- Multiple independent feedback loops can coexist
+- Graph compiler handles cycles by treating Frame Buffers as temporal nodes
+
+**Mixer Node with Blend Modes:**
+- 8 blend modes: Mix, Add, Multiply, Screen, Overlay, Difference, Luma Key (A), Luma Key (B)
+- Per-channel fader with fine drag control (0.002 speed)
+- Built-in luma keying with threshold and softness
+- Key invert toggle
+
+**Code Cleanup:**
+- Removed ~500 lines of dead code
+- Deleted: `channels.rs`, `modules/mod.rs`, `controls.rs`
+- Removed global feedback/CRT parameter sync
+- Added `#[allow(dead_code)]` for foundational types kept for future use
 
 ---
 

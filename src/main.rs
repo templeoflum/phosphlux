@@ -6,12 +6,11 @@
 //! Architecture mirrors actual hardware signal flow:
 //! - Sync generator provides master timing (NTSC/PAL)
 //! - Modules process signals in parallel on GPU (like analog circuits)
-//! - Feedback loops with minimal latency
-//! - CRT emulation as final output stage
+//! - Feedback loops emerge from node topology (Frame Buffer nodes)
+//! - CRT emulation via CRT Display nodes
 
 mod core;
 mod gpu;
-mod modules;
 mod ui;
 
 use winit::{
@@ -25,8 +24,6 @@ use std::sync::Arc;
 
 use crate::core::timing::{SyncGenerator, VideoStandard};
 use crate::gpu::renderer::Renderer;
-use crate::ui::ControlPanel;
-use crate::ui::controls::SynthParams;
 use crate::ui::patch::SignalPatch;
 use crate::ui::node_editor::{NodeEditor, AspectRatio, render_node_canvas, render_node_palette, render_inspector};
 
@@ -40,7 +37,6 @@ struct App {
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
     egui_renderer: Option<egui_wgpu::Renderer>,
-    control_panel: ControlPanel,
 
     // Node graph
     patch: SignalPatch,
@@ -61,7 +57,6 @@ impl App {
             egui_ctx: egui::Context::default(),
             egui_state: None,
             egui_renderer: None,
-            control_panel: ControlPanel::new(),
             patch: SignalPatch::default_patch(),
             node_editor: NodeEditor::new(),
             graph_needs_update: true,  // Compile initial graph
@@ -134,14 +129,6 @@ impl ApplicationHandler for App {
                 self.sync_gen.tick();
                 self.frame_count += 1;
 
-                // Sync global params to renderer (CRT effects + feedback)
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.feedback = self.control_panel.params.feedback;
-                    renderer.synth.scanline_intensity = self.control_panel.params.scanline_intensity;
-                    renderer.synth.curvature = self.control_panel.params.curvature;
-                    renderer.synth.vignette_amount = self.control_panel.params.vignette_amount;
-                }
-
                 // Render frame
                 self.render_frame(event_loop);
 
@@ -166,10 +153,6 @@ impl ApplicationHandler for App {
                 match key_code {
                     KeyCode::Escape => {
                         event_loop.exit();
-                    }
-                    KeyCode::Space => {
-                        self.control_panel.params = SynthParams::default();
-                        log::info!("Reset to defaults");
                     }
                     _ => {}
                 }
@@ -212,7 +195,6 @@ impl App {
 
         // Build UI - need to extract mutable state to pass to closure
         let full_output = {
-            let control_panel_params = &mut self.control_panel.params;
             let patch = &mut self.patch;
             let node_editor = &mut self.node_editor;
             let last_preview_size = &mut self.last_preview_size;
@@ -222,7 +204,6 @@ impl App {
             self.egui_ctx.run(raw_input, |ctx| {
                 let graph_changed = render_node_editor_layout(
                     ctx,
-                    control_panel_params,
                     patch,
                     node_editor,
                     last_preview_size,
@@ -230,7 +211,6 @@ impl App {
                     egui_renderer,
                 );
                 // Store the graph_changed flag for later access
-                // (egui context run doesn't return values cleanly, so we use the editor flag)
                 if graph_changed {
                     node_editor.graph_modified = true;
                 }
@@ -290,7 +270,6 @@ impl App {
 /// └──────────┴────────────────────────────────────────┴─────────────┘
 fn render_node_editor_layout(
     ctx: &egui::Context,
-    control_panel_params: &mut SynthParams,
     patch: &mut SignalPatch,
     node_editor: &mut NodeEditor,
     last_preview_size: &mut (u32, u32),
@@ -298,6 +277,7 @@ fn render_node_editor_layout(
     egui_renderer: &mut egui_wgpu::Renderer,
 ) -> bool {
     let mut graph_changed = false;
+
     // Top menu bar
     egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
@@ -317,15 +297,8 @@ fn render_node_editor_layout(
                     std::process::exit(0);
                 }
             });
-            ui.menu_button("Edit", |ui| {
-                if ui.button("Reset CRT Effects").clicked() {
-                    *control_panel_params = SynthParams::default();
-                    ui.close_menu();
-                }
-            });
             ui.menu_button("Help", |ui| {
                 ui.label("Keyboard:");
-                ui.label("  Space - Reset CRT effects");
                 ui.label("  Esc - Exit");
                 ui.separator();
                 ui.label("Node Editor:");
@@ -409,16 +382,9 @@ fn render_node_editor_layout(
 
             ui.separator();
 
-            // Bottom section: Inspector
+            // Bottom section: Inspector (shows selected node parameters)
             egui::ScrollArea::vertical().show(ui, |ui| {
                 render_inspector(ui, node_editor, patch);
-
-                ui.separator();
-
-                // Global effects (CRT + Feedback)
-                ui.collapsing("Global Effects", |ui| {
-                    render_global_effects(ui, control_panel_params);
-                });
             });
         });
 
@@ -431,31 +397,6 @@ fn render_node_editor_layout(
 
     // Return whether graph was modified (combine with File menu changes)
     graph_changed || node_editor.graph_modified
-}
-
-/// Global effects panel (CRT + Feedback)
-fn render_global_effects(ui: &mut egui::Ui, params: &mut SynthParams) {
-    ui.collapsing("Feedback", |ui| {
-        let fb = &mut params.feedback;
-        ui.add(egui::Slider::new(&mut fb.mix, 0.0..=0.99).text("Mix"));
-        ui.add(egui::Slider::new(&mut fb.zoom, 0.9..=1.1).text("Zoom"));
-        ui.add(egui::Slider::new(&mut fb.rotation, -0.1..=0.1).text("Rotation"));
-        ui.add(egui::Slider::new(&mut fb.hue_shift, -0.05..=0.05).text("Hue"));
-        ui.add(egui::Slider::new(&mut fb.decay, 0.9..=1.0).text("Decay"));
-        ui.add(egui::Slider::new(&mut fb.saturation, 0.0..=2.0).text("Saturation"));
-        ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut fb.offset_x, -0.1..=0.1).text("X"));
-        });
-        ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut fb.offset_y, -0.1..=0.1).text("Y"));
-        });
-    });
-
-    ui.collapsing("CRT Effects", |ui| {
-        ui.add(egui::Slider::new(&mut params.scanline_intensity, 0.0..=0.5).text("Scanlines"));
-        ui.add(egui::Slider::new(&mut params.curvature, 0.0..=0.3).text("Curvature"));
-        ui.add(egui::Slider::new(&mut params.vignette_amount, 0.0..=1.0).text("Vignette"));
-    });
 }
 
 fn main() {

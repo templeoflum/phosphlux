@@ -8,6 +8,11 @@
 //! - Textures store signals as normalized floats [0, 1] or [-1, 1]
 //! - RGB textures = 3 independent signal channels
 //! - RGBA = 3 signals + 1 key/alpha channel
+//!
+//! Note: These types are foundational and may be used for CPU-side signal
+//! processing in the future (e.g., preset interpolation, analysis).
+
+#![allow(dead_code)]
 
 use bytemuck::{Pod, Zeroable};
 
@@ -150,7 +155,7 @@ pub fn fold(x: f32, threshold: f32) -> f32 {
     }
 
     let mut v = x;
-    let range = threshold * 2.0;
+    let _range = threshold * 2.0;
 
     // Fold the value back within range
     while v > threshold || v < -threshold {

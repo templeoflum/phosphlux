@@ -12,15 +12,6 @@ use std::collections::{HashMap, HashSet};
 /// Maximum number of operations the GPU can execute per frame
 pub const MAX_OPS: usize = 32;
 
-/// Maximum number of signal slots for intermediate values
-pub const MAX_SLOTS: usize = 32;
-
-/// Maximum number of frame buffer nodes supported
-pub const MAX_FRAME_BUFFERS: usize = 4;
-
-/// Maximum number of display outputs
-pub const MAX_DISPLAYS: usize = 4;
-
 /// Operation codes for the GPU shader
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,7 +54,8 @@ pub enum OpCode {
 
     // Frame buffer write (stores current frame for next iteration)
     FrameBufferWrite = 50,
-    DelayLineWrite = 51,
+    #[allow(dead_code)]
+    DelayLineWrite = 51,  // Reserved for future delay line implementation
 
     // Display outputs (render targets)
     DisplayMonitor = 60,    // Clean monitor output
@@ -238,17 +230,6 @@ pub struct CompiledGraph {
 }
 
 impl CompiledGraph {
-    /// Create an empty graph (renders black)
-    pub fn empty() -> Self {
-        Self {
-            header: CompiledGraphHeader::default(),
-            ops: vec![GraphOp::default(); MAX_OPS],
-            frame_buffers: Vec::new(),
-            displays: Vec::new(),
-            node_to_op: HashMap::new(),
-        }
-    }
-
     /// Create a default graph for when no nodes exist
     pub fn default_fallback() -> Self {
         let mut ops = vec![GraphOp::default(); MAX_OPS];
@@ -314,23 +295,51 @@ impl CompiledGraph {
             if let Some(node) = patch.get_node(node_id) {
                 let op = &mut self.ops[op_idx];
 
-                // Extract params based on node type
-                let (new_param0, new_param1, new_param2, new_param3) =
-                    extract_node_params(node);
+                // Handle Frame Buffer nodes specially - they pack params differently
+                if node.node_type == NodeType::FrameBuffer {
+                    let zoom = node.params.get("zoom").copied().unwrap_or(1.0);
+                    let rotation = node.params.get("rotation").copied().unwrap_or(0.0);
+                    let hue_shift = node.params.get("hue_shift").copied().unwrap_or(0.0);
+                    let decay = node.params.get("decay").copied().unwrap_or(0.98);
+                    let saturation = node.params.get("saturation").copied().unwrap_or(1.0);
+                    let offset_x = node.params.get("offset_x").copied().unwrap_or(0.0);
+                    let offset_y = node.params.get("offset_y").copied().unwrap_or(0.0);
 
-                // Only mark as updated if values actually changed
-                if op.param0 != new_param0 || op.param1 != new_param1 ||
-                   op.param2 != new_param2 || op.param3 != new_param3 {
-                    op.param0 = new_param0;
-                    op.param1 = new_param1;
-                    op.param2 = new_param2;
-                    op.param3 = new_param3;
-                    updated = true;
+                    // Pack saturation and offsets into input_b
+                    let sat_bits = ((saturation * 100.0) as u32).min(255);
+                    let ox_bits = (((offset_x + 0.5) * 200.0) as u32).min(255);
+                    let oy_bits = (((offset_y + 0.5) * 200.0) as u32).min(255);
+                    let packed_input_b = sat_bits | (ox_bits << 8) | (oy_bits << 16);
+
+                    if op.param0 != zoom || op.param1 != rotation ||
+                       op.param2 != hue_shift || op.param3 != decay ||
+                       op.input_b != packed_input_b {
+                        op.param0 = zoom;
+                        op.param1 = rotation;
+                        op.param2 = hue_shift;
+                        op.param3 = decay;
+                        op.input_b = packed_input_b;
+                        updated = true;
+                    }
+                } else {
+                    // Extract params based on node type
+                    let (new_param0, new_param1, new_param2, new_param3) =
+                        extract_node_params(node);
+
+                    // Only mark as updated if values actually changed
+                    if op.param0 != new_param0 || op.param1 != new_param1 ||
+                       op.param2 != new_param2 || op.param3 != new_param3 {
+                        op.param0 = new_param0;
+                        op.param1 = new_param1;
+                        op.param2 = new_param2;
+                        op.param3 = new_param3;
+                        updated = true;
+                    }
                 }
             }
         }
 
-        // Also update frame buffer params
+        // Also update frame buffer info struct (for consistency/future use)
         for fb in &mut self.frame_buffers {
             if let Some(node) = patch.get_node(fb.node_id) {
                 fb.mix = node.params.get("mix").copied().unwrap_or(0.5);
@@ -341,7 +350,6 @@ impl CompiledGraph {
                 fb.saturation = node.params.get("saturation").copied().unwrap_or(1.0);
                 fb.offset_x = node.params.get("offset_x").copied().unwrap_or(0.0);
                 fb.offset_y = node.params.get("offset_y").copied().unwrap_or(0.0);
-                updated = true;
             }
         }
 
@@ -368,6 +376,19 @@ impl CompiledGraph {
 
 /// Extract parameters from a node based on its type
 fn extract_node_params(node: &crate::ui::patch::SignalNode) -> (f32, f32, f32, f32) {
+    use crate::ui::patch::NodeType;
+
+    // Handle Mixer specially - it has blend mode params
+    if matches!(node.node_type, NodeType::Mixer) {
+        let fader = node.params.get("fader").copied().unwrap_or(0.5);
+        let blend_mode = node.params.get("blend_mode").copied().unwrap_or(0.0);
+        let key_threshold = node.params.get("key_threshold").copied().unwrap_or(0.5);
+        let key_softness = node.params.get("key_softness").copied().unwrap_or(0.1);
+        // key_invert is packed separately in input_b bits
+        return (fader, blend_mode, key_threshold, key_softness);
+    }
+
+    // Generic parameter extraction for other node types
     let param0 = node.params.get("frequency")
         .or(node.params.get("gain"))
         .or(node.params.get("levels"))
@@ -448,18 +469,44 @@ impl GraphCompiler {
                 compiler.next_slot += 1;
                 compiler.node_slots.insert(node.id, read_slot);
 
-                // Emit the read operation
+                // Get Frame Buffer parameters from the node
+                let zoom = node.params.get("zoom").copied().unwrap_or(1.0);
+                let rotation = node.params.get("rotation").copied().unwrap_or(0.0);
+                let hue_shift = node.params.get("hue_shift").copied().unwrap_or(0.0);
+                let decay = node.params.get("decay").copied().unwrap_or(0.98);
+                let saturation = node.params.get("saturation").copied().unwrap_or(1.0);
+                let offset_x = node.params.get("offset_x").copied().unwrap_or(0.0);
+                let offset_y = node.params.get("offset_y").copied().unwrap_or(0.0);
+
+                // Emit the read operation with transform params packed into param0-param3
+                // Pack 7 params into 4 slots + input_b:
+                // param0 = zoom, param1 = rotation, param2 = hue_shift, param3 = decay
+                // input_b encodes: saturation in lower bits, offset packed
+                // For simplicity, encode saturation*100 + (offset_x+0.5)*10 + (offset_y+0.5)*0.1
+                // Actually, let's just use the most important params and defaults for rest
                 let fb_index = compiler.frame_buffers.len() as u32;
+
+                // Pack saturation and offsets into input_b as bits
+                // saturation: 0-2 range mapped to 0-200
+                // offset_x, offset_y: -0.5 to 0.5 mapped to 0-100 each
+                let sat_bits = ((saturation * 100.0) as u32).min(255);
+                let ox_bits = (((offset_x + 0.5) * 200.0) as u32).min(255);
+                let oy_bits = (((offset_y + 0.5) * 200.0) as u32).min(255);
+                let packed_input_b = sat_bits | (ox_bits << 8) | (oy_bits << 16);
+
                 compiler.ops.push(GraphOp {
                     opcode: OpCode::FrameBufferRead as u32,
                     input_a: fb_index, // Which frame buffer texture to read
-                    input_b: 0xFFFFFFFF,
+                    input_b: packed_input_b,
                     output_slot: read_slot,
-                    param0: 0.0,
-                    param1: 0.0,
-                    param2: 0.0,
-                    param3: 0.0,
+                    param0: zoom,
+                    param1: rotation,
+                    param2: hue_shift,
+                    param3: decay,
                 });
+
+                // Store the op index for this frame buffer read so we can update params later
+                compiler.node_to_op.insert(node.id, compiler.ops.len() - 1);
 
                 // Record frame buffer info (will be filled in later with write slot)
                 compiler.frame_buffers.push(FrameBufferInfo {

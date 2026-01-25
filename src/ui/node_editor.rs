@@ -63,10 +63,12 @@ impl AspectRatio {
 
 /// Connection drag mode - whether dragging from output or unplugging from input
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]  // to_node and to_input kept for debugging/future use
 pub enum ConnectionDragMode {
     /// Creating new connection from output socket
     FromOutput { node_id: u32, output_idx: usize },
     /// Unplugging existing connection from input socket
+    /// (to_node/to_input preserved for potential undo/debugging features)
     FromInput { original_from_node: u32, original_from_output: usize, to_node: u32, to_input: usize },
 }
 
@@ -887,13 +889,54 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                 ui.label("Parameters:");
                 for (key, value) in params_clone {
                     let mut val = value;
-                    let range = get_param_range(&key);
 
-                    if ui.add(egui::Slider::new(&mut val, range).text(&key)).changed() {
-                        if let Some(node) = patch.get_node_mut(node_id) {
-                            node.params.insert(key, val);
-                            // Only params changed - use lightweight update path
-                            editor.params_modified = true;
+                    // Handle different parameter types
+                    if is_combo_param(&key) {
+                        // Blend mode combo box
+                        let mode_idx = val as usize;
+                        let current_name = BLEND_MODE_NAMES.get(mode_idx).unwrap_or(&"Mix");
+                        ui.horizontal(|ui| {
+                            ui.label("Blend:");
+                            egui::ComboBox::from_id_salt(&key)
+                                .selected_text(*current_name)
+                                .show_ui(ui, |ui| {
+                                    for (idx, name) in BLEND_MODE_NAMES.iter().enumerate() {
+                                        if ui.selectable_label(mode_idx == idx, *name).clicked() {
+                                            if let Some(node) = patch.get_node_mut(node_id) {
+                                                node.params.insert(key.clone(), idx as f32);
+                                                editor.params_modified = true;
+                                            }
+                                        }
+                                    }
+                                });
+                        });
+                    } else if is_checkbox_param(&key) {
+                        // Checkbox for boolean params
+                        let mut checked = val > 0.5;
+                        if ui.checkbox(&mut checked, "Key Invert").changed() {
+                            if let Some(node) = patch.get_node_mut(node_id) {
+                                node.params.insert(key, if checked { 1.0 } else { 0.0 });
+                                editor.params_modified = true;
+                            }
+                        }
+                    } else {
+                        // Standard slider
+                        let range = get_param_range(&key);
+                        // Use smaller drag speed for fine control
+                        let speed = match key.as_str() {
+                            "fader" | "key_threshold" | "key_softness" => 0.002,
+                            _ => 0.01,
+                        };
+
+                        if ui.add(egui::Slider::new(&mut val, range)
+                            .text(&key)
+                            .drag_value_speed(speed)
+                        ).changed() {
+                            if let Some(node) = patch.get_node_mut(node_id) {
+                                node.params.insert(key, val);
+                                // Only params changed - use lightweight update path
+                                editor.params_modified = true;
+                            }
                         }
                     }
                 }
@@ -977,9 +1020,36 @@ fn get_param_range(param: &str) -> std::ops::RangeInclusive<f32> {
         "clip_black" => 0.0..=1.0,
         "clip_white" => 0.0..=1.0,
         "mix" => 0.0..=1.0,
+        "fader" => 0.0..=1.0,
         "amount" => -1.0..=1.0,
         "size" => 0.05..=0.8,
         "softness" => 0.0..=0.2,
+        "key_threshold" => 0.0..=1.0,
+        "key_softness" => 0.0..=0.5,
+        "key_invert" => 0.0..=1.0,
+        "blend_mode" => 0.0..=7.0,  // Used as fallback, but we use combo box
         _ => 0.0..=1.0,
     }
+}
+
+/// Blend mode names for the UI
+const BLEND_MODE_NAMES: &[&str] = &[
+    "Mix",           // 0
+    "Add",           // 1
+    "Multiply",      // 2
+    "Screen",        // 3
+    "Overlay",       // 4
+    "Difference",    // 5
+    "Luma Key (A)",  // 6 - key from A's luminance
+    "Luma Key (B)",  // 7 - key from B's luminance
+];
+
+/// Check if parameter should use a combo box instead of slider
+fn is_combo_param(param: &str) -> bool {
+    matches!(param, "blend_mode")
+}
+
+/// Check if parameter should use a checkbox instead of slider
+fn is_checkbox_param(param: &str) -> bool {
+    matches!(param, "key_invert")
 }

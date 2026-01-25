@@ -568,45 +568,69 @@ fn colorize_threshold(luma: f32, levels: f32) -> vec3<f32> {
 }
 
 // ============================================
-// VIDEO FEEDBACK
+// VIDEO FEEDBACK (Per-Node Parameters)
 // ============================================
 
-// Sample feedback with transform (zoom, rotate, offset)
-fn sample_feedback(uv: vec2<f32>) -> vec3<f32> {
+// Sample feedback with per-node transform parameters
+// This version takes explicit parameters from the Frame Buffer node
+fn sample_feedback_with_params(
+    uv: vec2<f32>,
+    zoom: f32,
+    rotation: f32,
+    offset_x: f32,
+    offset_y: f32,
+    hue_shift: f32,
+    saturation: f32,
+    decay: f32
+) -> vec3<f32> {
     // Center coordinates
     var centered = uv - 0.5;
 
     // Apply zoom
-    centered = centered / feedback.zoom;
+    centered = centered / zoom;
 
     // Apply rotation
-    let cos_r = cos(feedback.rotation);
-    let sin_r = sin(feedback.rotation);
+    let cos_r = cos(rotation);
+    let sin_r = sin(rotation);
     let rotated = vec2<f32>(
         centered.x * cos_r - centered.y * sin_r,
         centered.x * sin_r + centered.y * cos_r
     );
 
     // Apply offset
-    var fb_uv = rotated + 0.5 + vec2<f32>(feedback.offset_x, feedback.offset_y);
+    var fb_uv = rotated + 0.5 + vec2<f32>(offset_x, offset_y);
 
     // Sample feedback texture
     var fb_color = textureSample(feedback_texture, feedback_sampler, fb_uv).rgb;
 
     // Apply hue shift using fast rotation (much faster than HSV conversion)
     // Convert hue_shift (0-1) to radians (0-2π)
-    let hue_angle = feedback.hue_shift * 6.283185307;
+    let hue_angle = hue_shift * 6.283185307;
     fb_color = rotate_hue_fast(fb_color, hue_angle);
 
     // Apply saturation adjustment
     // Mix with luminance to desaturate
     let luma = dot(fb_color, vec3<f32>(0.299, 0.587, 0.114));
-    fb_color = mix(vec3<f32>(luma), fb_color, feedback.saturation);
+    fb_color = mix(vec3<f32>(luma), fb_color, saturation);
 
     // Apply decay
-    fb_color = fb_color * feedback.decay;
+    fb_color = fb_color * decay;
 
     return fb_color;
+}
+
+// Legacy version using global feedback uniform (for backwards compatibility)
+fn sample_feedback(uv: vec2<f32>) -> vec3<f32> {
+    return sample_feedback_with_params(
+        uv,
+        feedback.zoom,
+        feedback.rotation,
+        feedback.offset_x,
+        feedback.offset_y,
+        feedback.hue_shift,
+        feedback.saturation,
+        feedback.decay
+    );
 }
 
 // ============================================
@@ -667,6 +691,82 @@ fn vignette(uv: vec2<f32>, amount: f32) -> f32 {
 }
 
 // ============================================
+// BLEND MODES
+// ============================================
+
+// Blend mode constants
+const BLEND_MIX: u32 = 0u;
+const BLEND_ADD: u32 = 1u;
+const BLEND_MULTIPLY: u32 = 2u;
+const BLEND_SCREEN: u32 = 3u;
+const BLEND_OVERLAY: u32 = 4u;
+const BLEND_DIFFERENCE: u32 = 5u;
+const BLEND_LUMA_KEY_A: u32 = 6u;  // Key from A's luminance
+const BLEND_LUMA_KEY_B: u32 = 7u;  // Key from B's luminance
+
+// Luma key blend with threshold and softness
+// Returns B where A is bright, A where A is dark (or vice versa if inverted)
+fn blend_luma_key(base: vec3<f32>, overlay: vec3<f32>, key_source: vec3<f32>,
+                   threshold: f32, softness: f32, invert: f32) -> vec3<f32> {
+    let luma = dot(key_source, vec3<f32>(0.299, 0.587, 0.114));
+
+    // Calculate soft key with threshold
+    let half_soft = softness * 0.5;
+    let low = threshold - half_soft;
+    let high = threshold + half_soft;
+    var key = smoothstep(low, high, luma);
+
+    // Invert if requested
+    key = select(key, 1.0 - key, invert > 0.5);
+
+    return mix(base, overlay, key);
+}
+
+// Master blend function - applies selected blend mode
+fn apply_blend_mode(a: vec3<f32>, b: vec3<f32>, mode: u32, fader: f32,
+                    key_threshold: f32, key_softness: f32, key_invert: f32) -> vec3<f32> {
+    var result: vec3<f32>;
+
+    if mode == BLEND_MIX {
+        // Standard crossfade
+        result = mix(a, b, fader);
+    } else if mode == BLEND_ADD {
+        // Additive - combine and fade
+        let blended = a + b;
+        result = mix(a, blended, fader);
+    } else if mode == BLEND_MULTIPLY {
+        // Multiply - darken
+        let blended = a * b;
+        result = mix(a, blended, fader);
+    } else if mode == BLEND_SCREEN {
+        // Screen - lighten
+        let blended = blend_screen(a, b);
+        result = mix(a, blended, fader);
+    } else if mode == BLEND_OVERLAY {
+        // Overlay - contrast
+        let blended = blend_overlay(a, b);
+        result = mix(a, blended, fader);
+    } else if mode == BLEND_DIFFERENCE {
+        // Difference - psychedelic
+        let blended = blend_difference(a, b);
+        result = mix(a, blended, fader);
+    } else if mode == BLEND_LUMA_KEY_A {
+        // Luma key using A's luminance
+        result = blend_luma_key(a, b, a, key_threshold, key_softness, key_invert);
+        result = mix(a, result, fader);
+    } else if mode == BLEND_LUMA_KEY_B {
+        // Luma key using B's luminance
+        result = blend_luma_key(a, b, b, key_threshold, key_softness, key_invert);
+        result = mix(a, result, fader);
+    } else {
+        // Fallback to standard mix
+        result = mix(a, b, fader);
+    }
+
+    return result;
+}
+
+// ============================================
 // NODE GRAPH EVALUATION
 // ============================================
 
@@ -722,11 +822,37 @@ fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
     }
     // Frame Buffer Read - reads previous frame from feedback texture
     // input_a contains the frame buffer index (0-3)
+    // Parameters packed: param0=zoom, param1=rotation, param2=hue_shift, param3=decay
+    // input_b contains packed: saturation (bits 0-7), offset_x (bits 8-15), offset_y (bits 16-23)
     // For now we only support one frame buffer using the existing feedback texture
     else if opcode == OP_FRAME_BUFFER_READ {
-        // Sample feedback with transform (using global feedback params for now)
-        // In full implementation, each frame buffer would have its own texture
-        result = vec4<f32>(sample_feedback(uv), 1.0);
+        // Get transform params from the op (per-node params from Frame Buffer node)
+        let zoom = select(1.0, op.param0, op.param0 > 0.001);
+        let rotation = op.param1;
+        let hue_shift = op.param2;
+        let decay = select(0.98, op.param3, op.param3 > 0.001);
+
+        // Unpack saturation and offsets from input_b
+        let packed = op.input_b;
+        let sat_bits = packed & 255u;
+        let ox_bits = (packed >> 8u) & 255u;
+        let oy_bits = (packed >> 16u) & 255u;
+
+        let saturation = f32(sat_bits) / 100.0;
+        let offset_x = f32(ox_bits) / 200.0 - 0.5;
+        let offset_y = f32(oy_bits) / 200.0 - 0.5;
+
+        // Sample feedback with per-node transform parameters
+        result = vec4<f32>(sample_feedback_with_params(
+            uv,
+            zoom,
+            rotation,
+            offset_x,
+            offset_y,
+            hue_shift,
+            saturation,
+            decay
+        ), 1.0);
     }
     // Single-input processors
     else if opcode == OP_FOLDER {
@@ -770,8 +896,21 @@ fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
         let key = luma_key(input_a.rgb, clip_black, clip_white);
         result = vec4<f32>(key_mix(input_b.rgb, input_a.rgb, key), 1.0);
     } else if opcode == OP_MIXER {
-        let mix_amount = select(0.5, op.param0, op.param0 > 0.0);
-        result = vec4<f32>(mix(input_a.rgb, input_b.rgb, mix_amount), 1.0);
+        // param0 = fader (0-1), param1 = blend_mode (0-7)
+        // param2 = key_threshold, param3 = key_softness
+        // key_invert packed in input_b high bits when not used as input
+        let fader = select(0.5, op.param0, op.param0 >= 0.0);
+        let blend_mode = u32(op.param1);
+        let key_threshold = select(0.5, op.param2, op.param2 > 0.0);
+        let key_softness = select(0.1, op.param3, op.param3 > 0.0);
+        // Extract key_invert from packed bits (if no B input connected)
+        let key_invert = f32((op.input_b >> 24u) & 1u);
+
+        let blended = apply_blend_mode(
+            input_a.rgb, input_b.rgb, blend_mode, fader,
+            key_threshold, key_softness, key_invert
+        );
+        result = vec4<f32>(blended, 1.0);
     } else if opcode == OP_MULTIPLIER {
         result = vec4<f32>(input_a.rgb * input_b.rgb, 1.0);
     } else if opcode == OP_CHROMA_KEY {
