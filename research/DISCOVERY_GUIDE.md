@@ -259,12 +259,61 @@ Track what's been found for each device:
 - Choosing between conflicting sources
 - Museum/archive access requests
 
-### MCP Tool Ideas
+---
+
+## Retrieval Tools (Implemented)
+
+The following tools are now available for automated document retrieval:
+
+### Command Line Interface
+
+```bash
+# Patents
+python -m tools.retrieval.patents search "video synthesizer" --inventor="Abe"
+python -m tools.retrieval.patents download US4011557
+
+# Datasheets
+python -m tools.retrieval.datasheets search CA3046
+python -m tools.retrieval.datasheets download CA3046
+
+# Schematics
+python -m tools.retrieval.schematics search paik-abe
+python -m tools.retrieval.schematics download paik-abe-synthesizer
+
+# Manuals
+python -m tools.retrieval.manuals search fairlight --type=service
+python -m tools.retrieval.manuals download fairlight-cvi
+
+# Components
+python -m tools.retrieval.components list
+python -m tools.retrieval.components history ics/ca3046
 ```
-discover_patents(inventor: str, years: range) → List[PatentResult]
-discover_schematics(device: str) → List[SchematicResult]
-discover_datasheets(part_numbers: List[str]) → List[DatasheetResult]
-verify_source(url: str) → SourceQualityReport
+
+### MCP Tools (via Claude)
+
+| Tool | Description |
+|------|-------------|
+| `retrieve_patent` | Search/download patents |
+| `retrieve_datasheet` | Search/download datasheets |
+| `retrieve_schematic` | Search/download schematics |
+| `retrieve_manual` | Search/download manuals |
+| `get_provenance` | Get artifact provenance |
+| `list_components` | List WGSL components |
+| `component_history` | Get version history |
+
+### Provenance Database
+
+All retrieved artifacts are tracked in `research/provenance.db`:
+
+```sql
+-- List all patents
+SELECT * FROM artifacts WHERE type = 'patent';
+
+-- Get version history for a component
+SELECT * FROM versions WHERE artifact_id = 'component:ics/ca3046';
+
+-- Find relationships
+SELECT * FROM relationships WHERE from_id = 'datasheet:CA3046';
 ```
 
 ---

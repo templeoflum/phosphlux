@@ -22,6 +22,15 @@ research/
 
 **See [DISCOVERY_GUIDE.md](DISCOVERY_GUIDE.md) for how to find primary sources.**
 
+### Provenance Database
+
+All artifacts are tracked in `provenance.db`:
+- **artifacts** - Downloaded documents with SHA256 hashes
+- **versions** - Component model versions
+- **rd_passes** - R&D session tracking
+- **relationships** - Links between artifacts (derived_from, references, etc.)
+- **sources** - Knowledge source quality ratings
+
 ---
 
 ## v1 Target Devices
