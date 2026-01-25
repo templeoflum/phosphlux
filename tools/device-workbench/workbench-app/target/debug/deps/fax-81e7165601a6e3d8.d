@@ -1,9 +1,0 @@
-C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\debug\deps\fax-81e7165601a6e3d8.d: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\lib.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\maps.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\decoder.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\encoder.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\tiff.rs
-
-C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\debug\deps\libfax-81e7165601a6e3d8.rmeta: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\lib.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\maps.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\decoder.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\encoder.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\tiff.rs
-
-C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\lib.rs:
-C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\maps.rs:
-C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\decoder.rs:
-C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\encoder.rs:
-C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\fax-0.2.6\src\tiff.rs:
