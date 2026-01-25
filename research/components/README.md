@@ -62,6 +62,11 @@ Each component folder contains:
 - `model.wgsl` - Core folding functions (triangle, sine, Paik/Abe style)
 - `folder.wgsl` - **Wavefolder effect** with adjustable gain and softness
 
+### Wobbulator (functional/wobbulator/)
+- `spec.json` - Oscillator and displacement specifications
+- `model.wgsl` - Oscillator waveforms, displacement functions
+- `wobbulator.wgsl` - **Scan displacement effect** with video modulation
+
 ## Transfer Function Format
 
 ```json

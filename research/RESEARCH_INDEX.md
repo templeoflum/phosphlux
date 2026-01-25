@@ -1,113 +1,142 @@
 # Research Index
 
-Collected research materials for historical video synthesis hardware emulation.
-
-## Priority Devices (from HISTORICAL_EMULATION_PLAN.md)
-
-### CRITICAL Priority
-- [x] Paik/Abe Video Synthesizer (1969) - schematics collected
-- [ ] Sandin Image Processor (1971)
-- [ ] Rutt/Etra Video Synthesizer (1972)
-- [ ] LZX Visionary (2010)
-- [ ] Sony PVM/BVM CRT Display
-
-### HIGH Priority
-- [ ] Ben Laposky Oscilloscope Art (1950)
-- [ ] Stephen Beck Direct Video Synthesizer (1970)
-- [ ] Jones Colorizer (1973)
-- [ ] LZX Cadet Series (2012)
-- [ ] Edirol V4/V4EX (2000/2008)
+Component-level emulation of historical video synthesis hardware.
 
 ---
 
-## Collected Materials
+## 7-Layer Research Architecture
+
+```
+research/
+├── techniques/      # Abstract methods (amplitude windowing, wavefolding, etc.)
+├── figures/         # Key inventors (Paik, Abe, Sandin, etc.)
+├── technologies/    # Specific devices (Paik/Abe, Sandin IP, etc.)
+├── patents/         # Legal documents with implementation details
+├── manuals/         # Operation and service documentation
+├── schematics/      # Circuit diagrams
+├── datasheets/      # IC specifications
+└── components/      # WGSL shader models
+    ├── ics/         # Integrated circuit models
+    └── functional/  # Higher-level functional blocks
+```
+
+**See [DISCOVERY_GUIDE.md](DISCOVERY_GUIDE.md) for how to find primary sources.**
+
+---
+
+## v1 Target Devices
+
+| # | Device | Era | Status | Documents |
+|---|--------|-----|--------|-----------|
+| 1 | **Paik/Abe Video Synthesizer** | 1969 | Core Complete | Schematics ✓, Tech Docs ✓ |
+| 2 | **Sandin Image Processor** | 1971 | Pending | Need schematics |
+| 3 | **Rutt/Etra Video Synthesizer** | 1972 | Pending | Need schematics |
+| 4 | **Jones Colorizer** | 1974 | Pending | Need schematics |
+| 5 | **LZX Cadet Series** | 2012 | Pending | GitHub ✓ |
+
+---
+
+## Component Library Status
+
+### ICs Modeled
+
+| Component | Type | Used In | Shaders |
+|-----------|------|---------|---------|
+| CA3046 | Transistor Array | Paik/Abe, Sandin IP | model.wgsl, colorizer.wgsl |
+| CA3019 | Diode Array | Paik/Abe PED Control | model.wgsl, ped_control.wgsl, colorizer.wgsl |
+| CA3054 | Dual Diff Amp | Paik/Abe Matrix, Keyer | model.wgsl, matrix_mixer.wgsl, video_keyer.wgsl |
+| CA3080 | OTA | Sandin IP | model.wgsl, vca.wgsl |
+| LM311 | Comparator | Generic Keying | model.wgsl, keyer.wgsl |
+
+### Functional Blocks Modeled
+
+| Block | Based On | Used In | Shaders |
+|-------|----------|---------|---------|
+| Folding Amplifier | Discrete transistors | Paik/Abe | model.wgsl, folder.wgsl |
+| Wobbulator | CRT deflection mod | Paik/Abe | model.wgsl, wobbulator.wgsl |
+
+### ICs Needed
+
+| Component | Type | Used In | Datasheet |
+|-----------|------|---------|-----------|
+| CA3022 | Video Amp | Paik/Abe | RCA Databook |
+| CA3023 | Video Amp | Paik/Abe | RCA Databook |
+| MC1445 | Gain Block | Sandin IP | Motorola |
+
+---
+
+## Collected Documents
 
 ### Schematics
-| Device | File | Source | Status |
-|--------|------|--------|--------|
-| Paik/Abe Video Synthesizer | `schematics/Paik-Abe Video Synthesizer - Schematics.pdf` | Archive | Complete |
-| Paik/Abe Video Synthesizer | `schematics/Paik Abe Video Synthesizer Technical Documentation.pdf` | Archive | Complete (87 pages) |
-
-### Datasheets / Component Models
-| Component | Type | File | Used In | Status |
-|-----------|------|------|---------|--------|
-| CA3046 | Transistor Array | `components/ics/ca3046/` | Paik/Abe, Sandin IP | **Modeled** |
-| CA3080 | OTA | `components/ics/ca3080/` | Sandin IP | **Modeled** |
-| LM311 | Comparator | `components/ics/lm311/` | Generic | **Modeled** |
-| CA3019 | Diode Array | *need datasheet* | Paik/Abe (amplitude windows) | **PRIORITY** |
-| CA3022 | Video Amp | *need datasheet* | Paik/Abe | Needed |
-| CA3023 | Video Amp | *need datasheet* | Paik/Abe | Needed |
-| CA3054 | Diff Amp | *need datasheet* | Paik/Abe | Needed |
-| CA3055 | Diff Amp | *need datasheet* | Paik/Abe | Needed |
-
-### Component Library
-See `components/README.md` for the component modeling system.
+| Device | File | Pages |
+|--------|------|-------|
+| Paik/Abe | `schematics/Paik-Abe Video Synthesizer - Schematics.pdf` | 26 |
+| Paik/Abe | `schematics/Paik Abe Video Synthesizer Technical Documentation.pdf` | 87 |
 
 ### Patents
-| Device | Patent # | File | Status |
-|--------|----------|------|--------|
-| *none yet* | | | |
+*None collected yet - see [DISCOVERY_GUIDE.md](DISCOVERY_GUIDE.md) for search strategies*
 
 ### Manuals
-| Device | File | Source | Status |
-|--------|------|--------|--------|
-| *none yet* | | | |
+*None collected yet*
+
+### Datasheets
+*Embedded in component spec.json files*
 
 ---
 
 ## Source Links
 
-### Primary Sources
-- [LZX Industries GitHub](https://github.com/lzxindustries) - Cadet schematics
+### Primary Archives
 - [Vasulka Archive](http://vasulka.org) - Historical documentation
-- [Experimental TV Center](http://experimentaltvcenter.org) - Historical equipment
-- [Fondation Langlois](http://fondation-langlois.org) - Daniel Langlois archive
+- [Experimental TV Center](http://experimentaltvcenter.org) - Equipment docs
+- [LZX Industries GitHub](https://github.com/lzxindustries) - Cadet schematics
 
-### Community Sources
+### Datasheet Sources
+- [1978 RCA Linear IC Databook](https://www.smcelectronics.com/DOWNLOADS/1978-RCA%20LINEAR%20IC.PDF) - CA-30xx series
+- [AllDatasheet](https://www.alldatasheet.com) - General search
+- [Datasheet Archive](https://www.datasheetarchive.com) - Obsolete parts
+
+### Patent Search
+- [Google Patents](https://patents.google.com) - Free searchable database
+
+### Community
 - [Scanlines.xyz](https://scanlines.xyz) - Video synthesis forum
-- [ModWiggler Video Section](https://modwiggler.com/forum) - Eurorack video
-
-### Datasheet Archives
-- [AllDatasheet](https://www.alldatasheet.com)
-- [DatasheetCatalog](https://www.datasheetcatalog.com)
+- [ModWiggler Video Forum](https://modwiggler.com/forum) - Eurorack video
 
 ---
 
 ## Research Notes
 
-### 2026-01-25: Component Agent Workflow Implemented
-Built automated component research workflow:
-- ComponentAgent looks up part numbers, checks internal database
-- If found: creates spec.json and generates WGSL model automatically
-- If not found: queues datasheet download request for user
-- Models generated: CA3046 (transistor array), CA3080 (OTA), LM311 (comparator)
+### 2026-01-25: Paik/Abe Core Complete
+All major functional blocks modeled and tested:
+- CA3046 transistor array (differential pairs)
+- CA3019 diode array (PED Control colorizer)
+- CA3054 dual diff amp (matrix mixer, video keyer)
+- Folding amplifier (nonlinear waveshaper)
+- Wobbulator (scan displacement)
 
-**WGSL model features:**
-- Transfer functions normalized for 0-1V video signals
-- Key functions for each component type (diff pair, current mirror, etc.)
-- Soft limiting for realistic analog behavior
+Parameter sweep documentation captured for each component.
 
-### 2026-01-25: Paik/Abe Schematics Analyzed
-Collected full technical documentation (87 pages) and schematics (26 pages).
+### 2026-01-25: 7-Layer Research Architecture
+Implemented structured approach for all future devices:
+1. Techniques - Abstract methods
+2. Figures - Key inventors
+3. Technologies - Specific devices
+4. Patents - Legal documents
+5. Manuals - Operation docs
+6. Schematics - Circuit diagrams
+7. Components - IC models
 
-**Key findings from schematics:**
-- 7 camera input channels (CH-1 through CH-7)
-- Matrix & Mixing Amp combines channels → R, G, B outputs
-- Color banding uses **amplitude windows**, NOT wavefolding
-- Key ICs: CA-3019, CA-3022, CA-3023, CA-3046, CA-3054, CA-3055
-- Final output goes to encoder for NTSC signal
+See [DISCOVERY_GUIDE.md](DISCOVERY_GUIDE.md) for source discovery workflows.
 
-**Next steps:**
-- Find datasheets for CA-30xx series ICs
-- Create notes on amplitude window circuit behavior
-- Search for related patents
-
-### 2024-XX-XX: Project Started
-Initial research infrastructure created. Next steps:
-1. Download LZX Cadet schematics from GitHub
-2. Search archive.org for Sandin IP documentation
-3. Find Paik/Abe patent (if exists)
+### 2026-01-25: Component Agent Workflow
+Automated pipeline:
+- Extract IC part numbers from schematics
+- Look up in internal database or datasheet sources
+- Generate spec.json with SPICE parameters
+- Create WGSL model with transfer functions
+- Test in workbench with parameter sweeps
 
 ---
 
-*Update this file as materials are collected.*
+*Update this file as research progresses.*

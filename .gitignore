@@ -1,7 +1,15 @@
 # Rust
 /target
+**/target/
 **/*.rs.bk
 # Note: Cargo.lock is tracked for reproducible builds (this is a binary, not a library)
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
 
 # Dependencies (TypeScript archive)
 node_modules/
@@ -20,6 +28,7 @@ dist-demo/
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Test coverage
 coverage/
@@ -35,7 +44,10 @@ npm-debug.log*
 # TypeScript cache
 *.tsbuildinfo
 
-# Generated files
-*.ppm
-*.png
-*.jpg
+# Generated test signals (regeneratable)
+tools/device-workbench/test_signals/*.png
+
+# Root level temp images (keep docs/screenshots/)
+/*.png
+/*.jpg
+/*.ppm
