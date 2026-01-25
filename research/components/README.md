@@ -33,6 +33,12 @@ Each component folder contains:
 
 ## Available Components
 
+### CA3019 - Ultra-fast Matched Diode Array
+- `spec.json` - Pinout, diode specifications, transfer function
+- `model.wgsl` - Diode conduction, amplitude window detection, multi-level classification
+- `colorizer.wgsl` - **Paik/Abe PED Control** - the core colorizer effect
+- `ped_control.wgsl` - Full PED Control circuit with chroma mixing
+
 ### CA3046 - NPN Transistor Array
 - `model.wgsl` - BJT transfer function, differential pair, current mirror
 - `colorizer.wgsl` - **Paik/Abe style colorizer** using amplitude windows
@@ -44,6 +50,17 @@ Each component folder contains:
 ### LM311 - Voltage Comparator
 - `model.wgsl` - Hard/soft comparator, window comparator
 - `keyer.wgsl` - **Video keyer** with threshold and window modes
+
+### CA3054 - Dual Differential Amplifier
+- `spec.json` - Pinout, specifications, transfer function
+- `model.wgsl` - Diff amp, keying functions, matrix mixing
+- `matrix_mixer.wgsl` - **7-channel to RGB matrix mixer** (Paik/Abe page 8)
+- `video_keyer.wgsl` - **Video keyer** with hard/soft keying modes
+
+### Folding Amplifier (functional/folding_amp/)
+- `spec.json` - Behavior specification, transfer functions
+- `model.wgsl` - Core folding functions (triangle, sine, Paik/Abe style)
+- `folder.wgsl` - **Wavefolder effect** with adjustable gain and softness
 
 ## Transfer Function Format
 
@@ -79,14 +96,16 @@ Each component folder contains:
 
 ## Priority Components (from Paik/Abe schematics)
 
-| Part | Type | Function | Datasheet Status |
-|------|------|----------|------------------|
-| CA3019 | Diode Array | Amplitude window detection | Need |
-| CA3022 | Video Amplifier | Signal conditioning | Need |
-| CA3023 | Video Amplifier | Signal conditioning | Need |
-| CA3046 | Transistor Array | General purpose | Available |
-| CA3054 | Differential Amp | Matrix mixing | Need |
-| CA3055 | Differential Amp | Matrix mixing | Need |
+| Part | Type | Function | Status |
+|------|------|----------|--------|
+| CA3019 | Diode Array | Amplitude window detection (PED Control) | **Modeled** |
+| CA3022 | Video Amplifier | Signal conditioning | Need datasheet |
+| CA3023 | Video Amplifier | Signal conditioning | Need datasheet |
+| CA3046 | Transistor Array | General purpose | **Modeled** |
+| CA3054 | Differential Amp | Matrix mixing, keying | **Modeled** |
+| CA3055 | Differential Amp | Matrix mixing | Need datasheet |
+| CA3080 | OTA | Voltage controlled gain | **Modeled** |
+| LM311 | Comparator | Threshold detection | **Modeled** |
 
 ## Sources
 

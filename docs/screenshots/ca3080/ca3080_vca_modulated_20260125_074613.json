@@ -1,0 +1,7 @@
+{
+  "name": "ca3080_vca_modulated",
+  "device": "ca3080",
+  "description": "CA3080 VCA with LFO gain modulation - shows amplitude variations across image",
+  "timestamp": "2026-01-25T07:46:13.102232",
+  "image_file": "ca3080_vca_modulated_20260125_074613.png"
+}

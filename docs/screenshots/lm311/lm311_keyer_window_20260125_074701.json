@@ -1,0 +1,7 @@
+{
+  "name": "lm311_keyer_window",
+  "device": "lm311",
+  "description": "LM311 window comparator keyer - hard threshold selecting luminance band between 0.3-0.7",
+  "timestamp": "2026-01-25T07:47:01.932893",
+  "image_file": "lm311_keyer_window_20260125_074701.png"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "ca3080_vca_colorbars",
+  "device": "ca3080",
+  "description": "CA3080 OTA voltage controlled amplifier - unity gain showing soft tanh clipping characteristic",
+  "timestamp": "2026-01-25T07:46:02.790158",
+  "image_file": "ca3080_vca_colorbars_20260125_074602.png"
+}

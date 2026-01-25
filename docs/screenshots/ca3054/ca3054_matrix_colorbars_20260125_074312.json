@@ -1,0 +1,7 @@
+{
+  "name": "ca3054_matrix_colorbars",
+  "device": "ca3054",
+  "description": "CA3054 diff amp matrix mixer processing SMPTE color bars - 7-channel weighted mixing with edge detection",
+  "timestamp": "2026-01-25T07:43:12.536167",
+  "image_file": "ca3054_matrix_colorbars_20260125_074312.png"
+}

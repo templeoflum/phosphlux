@@ -1,0 +1,7 @@
+{
+  "name": "ca3054_matrix_rotated",
+  "device": "ca3054",
+  "description": "CA3054 matrix mixer with color rotation - demonstrates weighted channel mixing with rotation parameter",
+  "timestamp": "2026-01-25T07:43:22.359093",
+  "image_file": "ca3054_matrix_rotated_20260125_074322.png"
+}

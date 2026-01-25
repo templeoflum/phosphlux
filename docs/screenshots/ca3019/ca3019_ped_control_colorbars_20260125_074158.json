@@ -1,0 +1,7 @@
+{
+  "name": "ca3019_ped_control_colorbars",
+  "device": "ca3019",
+  "description": "CA3019 PED Control colorizer processing SMPTE color bars - amplitude window detection on varying luminance",
+  "timestamp": "2026-01-25T07:41:58.597338",
+  "image_file": "ca3019_ped_control_colorbars_20260125_074158.png"
+}

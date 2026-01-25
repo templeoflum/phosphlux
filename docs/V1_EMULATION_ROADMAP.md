@@ -8,7 +8,7 @@ Target: Component-level emulation of five foundational video synthesis devices.
 
 | # | Device | Era | Complexity | Status |
 |---|--------|-----|------------|--------|
-| 1 | **Paik/Abe Video Synthesizer** | 1969-1971 | High | 🔄 In Progress |
+| 1 | **Paik/Abe Video Synthesizer** | 1969-1971 | High | ✅ Core Complete |
 | 2 | **Sandin Image Processor** | 1971-1974 | High | ⏳ Pending |
 | 3 | **Rutt/Etra Video Synthesizer** | 1972-1974 | Medium | ⏳ Pending |
 | 4 | **Jones Colorizer** | 1974 | Medium | ⏳ Pending |
@@ -35,23 +35,29 @@ Target: Component-level emulation of five foundational video synthesis devices.
 
 | IC | Type | Function | Status |
 |----|------|----------|--------|
-| CA3046 | Transistor Array | Diff pairs, current mirrors | ✅ Modeled |
-| CA3019 | Diode Array | Amplitude window detection | ❌ Need datasheet |
+| CA3046 | Transistor Array | Diff pairs, current mirrors | ✅ Modeled + Tested |
+| CA3019 | Diode Array | Amplitude window detection | ✅ Modeled + Tested |
 | CA3022 | Video Amp | Signal conditioning | ❌ Need datasheet |
 | CA3023 | Video Amp | Signal conditioning | ❌ Need datasheet |
-| CA3054 | Diff Amp | Matrix mixing | ❌ Need datasheet |
-| CA3055 | Diff Amp | Matrix mixing | ❌ Need datasheet |
+| CA3054 | Diff Amp | Matrix mixing, keying | ✅ Modeled + Tested |
+| CA3055 | Diff Amp | Matrix mixing | ⏳ Optional (CA3054 covers this) |
 
 ### Functional Blocks to Build
-1. [ ] **7-Channel Input Matrix** — Weighted mixing of video sources
-2. [x] **Amplitude Window Colorizer** — CA3046 diff pairs (colorizer.wgsl exists)
-3. [ ] **Folding Amplifier** — Nonlinear waveshaping
-4. [ ] **Wobbulator** — Horizontal/vertical scan displacement
-5. [ ] **Output Encoder** — RGB to composite (optional)
+1. [x] **7-Channel Input Matrix** — CA3054 matrix mixer (matrix_mixer.wgsl)
+2. [x] **Amplitude Window Colorizer** — CA3019 PED Control (ped_control.wgsl)
+3. [x] **Folding Amplifier** — Nonlinear waveshaping (folder.wgsl)
+4. [x] **Video Keyer** — CA3054 hard/soft keying (video_keyer.wgsl)
+5. [x] **Wobbulator** — Horizontal/vertical scan displacement (wobbulator.wgsl)
+6. [ ] **Output Encoder** — RGB to composite (optional)
 
 ### Current Progress
-- CA3046 colorizer shader tested in workbench
-- Need remaining CA-30xx datasheets from RCA Linear IC Databook
+- ✅ CA3046 transistor array modeled (differential pairs, current mirrors)
+- ✅ CA3019 diode array modeled from schematic page 28 (PED Control)
+- ✅ CA3054 dual diff amp modeled (matrix mixer, video keyer)
+- ✅ Folding amplifier modeled and tested
+- ✅ All above tested in workbench at 60 FPS with parameter sweeps
+- ✅ Wobbulator shader tested in workbench with animation and amplitude sweeps
+- ❌ CA3022/CA3023 Video Amp datasheets still needed (optional)
 
 ---
 
@@ -192,15 +198,15 @@ LZX Cadet is well-documented and uses modern components, making it the easiest t
 ### Modeled (Ready to Use)
 | Component | Type | Shaders |
 |-----------|------|---------|
+| CA3019 | Diode Array | model.wgsl, colorizer.wgsl, ped_control.wgsl |
 | CA3046 | Transistor Array | model.wgsl, colorizer.wgsl |
 | CA3080 | OTA | model.wgsl, vca.wgsl |
 | LM311 | Comparator | model.wgsl, keyer.wgsl |
 
 ### Priority Queue (Need Datasheets)
-1. **CA3019** — Paik/Abe amplitude windows (CRITICAL)
-2. **CA3054/CA3055** — Paik/Abe matrix mixing
-3. **CA3022/CA3023** — Paik/Abe video amps
-4. **MC1445** — Sandin IP gain blocks
+1. **CA3054/CA3055** — Paik/Abe matrix mixing
+2. **CA3022/CA3023** — Paik/Abe video amps
+3. **MC1445** — Sandin IP gain blocks
 
 ### Known Sources
 - [1978 RCA Linear IC Databook](https://www.smcelectronics.com/DOWNLOADS/1978-RCA%20LINEAR%20IC.PDF) — All CA-30xx parts

@@ -1,0 +1,7 @@
+{
+  "name": "ca3054_keyer_colorbars",
+  "device": "ca3054",
+  "description": "CA3054 video keyer processing color bars - luminance-based keying between original and colorized source",
+  "timestamp": "2026-01-25T07:44:15.610403",
+  "image_file": "ca3054_keyer_colorbars_20260125_074415.png"
+}

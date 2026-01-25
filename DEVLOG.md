@@ -808,6 +808,131 @@ Hard threshold keying with adjustable window width.
 - **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
 - **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
 - **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking, component library with CA3046/CA3080/LM311 models, device workbench for shader testing
+- **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator; Paik/Abe core complete
+
+---
+
+## Phase 10: Component Library Expansion & Paik/Abe Completion
+
+### Overview
+
+Phase 10 focused on completing the Paik/Abe Video Synthesizer functional blocks by modeling the remaining ICs and creating application shaders for each circuit function.
+
+### New IC Models
+
+#### CA3019 — Ultra-Fast Diode Array
+
+The CA3019 is a matched diode array used in the Paik/Abe "PED Control" (amplitude window colorizer). It creates the distinctive color banding effect by slicing luminance into windows.
+
+**Files:**
+- `research/components/ics/ca3019/spec.json` — Diode characteristics, forward voltage curves
+- `research/components/ics/ca3019/model.wgsl` — Core: `diode_transfer()`, `amplitude_window()`
+- `research/components/ics/ca3019/ped_control.wgsl` — Paik/Abe colorizer with 3 adjustable thresholds
+- `research/components/ics/ca3019/colorizer.wgsl` — Simplified multi-band colorizer
+
+**Transfer Function:**
+```
+I = Is * (exp(V / (n * Vt)) - 1)
+Where: Is = saturation current, n = ideality factor, Vt = thermal voltage
+```
+
+The soft diode knee creates natural transitions between color bands — this is why Paik/Abe colorizers look distinctly different from digital threshold keyers.
+
+#### CA3054 — Dual Differential Amplifier
+
+The CA3054 provides two independent differential amplifier stages, used in the Paik/Abe for:
+1. Matrix mixing (7-channel input blending)
+2. Video keying (hard and soft edge detection)
+
+**Files:**
+- `research/components/ics/ca3054/spec.json` — Diff amp specs, gain equations
+- `research/components/ics/ca3054/model.wgsl` — Core: `diff_amp()`, `soft_clip()`
+- `research/components/ics/ca3054/matrix_mixer.wgsl` — 7-channel matrix with rotation
+- `research/components/ics/ca3054/video_keyer.wgsl` — Soft/hard edge keying
+
+**Key Insight:** The CA3054's finite slew rate and soft clipping create the characteristic "analog edge" on keyed video — never perfectly hard, always with subtle gradation.
+
+### Functional Blocks
+
+#### Folding Amplifier
+
+The signature Paik/Abe effect — signals that exceed a threshold fold back instead of clipping, creating harmonic-rich waveforms.
+
+**Files:**
+- `research/components/functional/folding_amp/spec.json` — Folding behavior specification
+- `research/components/functional/folding_amp/model.wgsl` — Core: `fold_signal()`, `multi_fold()`
+- `research/components/functional/folding_amp/folder.wgsl` — Application shader with gain control
+
+**Transfer Function:**
+```wgsl
+fn fold_signal(x: f32, threshold: f32) -> f32 {
+    let normalized = x / threshold;
+    let folded = abs(fract(normalized * 0.5) * 2.0 - 1.0);
+    return folded * threshold;
+}
+```
+
+At low gain (1-2x), signals pass cleanly. At high gain (6-8x), signals fold multiple times creating complex color bands from simple inputs.
+
+#### Wobbulator
+
+CRT scan displacement — the effect Paik created by placing magnets on television screens, later refined by Abe with electronic oscillators.
+
+**Files:**
+- `research/components/functional/wobbulator/spec.json` — Modulation parameters
+- `research/components/functional/wobbulator/model.wgsl` — Oscillators, displacement functions, presets
+- `research/components/functional/wobbulator/wobbulator.wgsl` — Full workbench shader
+
+**Modulation Sources:**
+- Internal oscillators (sine, triangle, sawtooth, square)
+- Video-driven displacement (luminance → position)
+- Edge handling modes (clamp, wrap, mirror)
+
+### Paik/Abe Functional Blocks Status
+
+| Block | IC/Component | Shader | Status |
+|-------|--------------|--------|--------|
+| 7-Channel Matrix | CA3054 | matrix_mixer.wgsl | ✅ Complete |
+| Amplitude Colorizer | CA3019 | ped_control.wgsl | ✅ Complete |
+| Folding Amplifier | Functional | folder.wgsl | ✅ Complete |
+| Wobbulator | Functional | wobbulator.wgsl | ✅ Complete |
+| Video Keyer | CA3054 | video_keyer.wgsl | ✅ Complete |
+| Output Encoder | TBD | — | ⏳ Optional |
+
+### Component Library Summary
+
+**ICs Modeled:**
+| IC | Type | Core Functions |
+|----|------|----------------|
+| CA3046 | NPN Transistor Array | `differential_pair()`, `current_mirror()` |
+| CA3019 | Diode Array | `diode_transfer()`, `amplitude_window()` |
+| CA3054 | Dual Diff Amp | `diff_amp()`, `soft_clip()` |
+| CA3080 | OTA | `ota_transfer()`, `ota_vca()` |
+| LM311 | Comparator | `lm311_compare()`, `lm311_window()` |
+
+**Functional Blocks:**
+| Block | Functions |
+|-------|-----------|
+| Folding Amplifier | `fold_signal()`, `multi_fold()` |
+| Wobbulator | `displace_oscillator()`, `displace_video()` |
+
+### Workbench Testing
+
+All components tested at 60 FPS using the device workbench with:
+- Horizontal/vertical ramp signals
+- SMPTE color bars
+- Checker patterns
+- Parameter sweeps captured as GIFs
+
+### Key Insights
+
+1. **Transfer functions matter more than topology** — Getting the `tanh()` in diff pairs and the exponential in diodes right produces authentic analog behavior. The specific circuit arrangement is secondary.
+
+2. **Soft transitions are not bugs** — Every analog component has finite slew rate, thermal effects, and loading. These "imperfections" define the aesthetic.
+
+3. **Reusable models compound value** — CA3054 model now serves matrix mixing AND video keying. CA3046 works across Paik/Abe and Sandin IP.
+
+4. **Historical documentation is essential** — The 30-page Paik/Abe technical analysis and original schematics made accurate modeling possible.
 
 ---
 

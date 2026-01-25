@@ -189,20 +189,40 @@ Rust/wgpu application for real-time shader testing:
 
 ### Component Library (`research/components/`)
 
-Reusable analog IC models:
+Reusable analog IC and functional block models:
 
 ```
-components/ics/
-├── ca3046/           # NPN Transistor Array
-│   ├── spec.json     # SPICE parameters, pinout
-│   ├── model.wgsl    # differential_pair(), current_mirror()
-│   └── colorizer.wgsl # Paik/Abe amplitude window effect
-├── ca3080/           # OTA (Operational Transconductance Amplifier)
-│   ├── model.wgsl    # ota_transfer(), ota_vca()
-│   └── vca.wgsl      # Voltage controlled amplifier
-└── lm311/            # Voltage Comparator
-    ├── model.wgsl    # lm311_compare(), lm311_window()
-    └── keyer.wgsl    # Video threshold keyer
+components/
+├── ics/
+│   ├── ca3046/           # NPN Transistor Array
+│   │   ├── spec.json     # SPICE parameters, pinout
+│   │   ├── model.wgsl    # differential_pair(), current_mirror()
+│   │   └── colorizer.wgsl
+│   ├── ca3019/           # Ultra-Fast Diode Array
+│   │   ├── spec.json     # Diode characteristics
+│   │   ├── model.wgsl    # diode_transfer(), amplitude_window()
+│   │   ├── ped_control.wgsl  # Paik/Abe colorizer
+│   │   └── colorizer.wgsl
+│   ├── ca3054/           # Dual Differential Amplifier
+│   │   ├── spec.json     # Diff amp specs
+│   │   ├── model.wgsl    # diff_amp(), soft_clip()
+│   │   ├── matrix_mixer.wgsl  # 7-channel matrix
+│   │   └── video_keyer.wgsl   # Soft/hard keying
+│   ├── ca3080/           # OTA (Transconductance Amplifier)
+│   │   ├── model.wgsl    # ota_transfer(), ota_vca()
+│   │   └── vca.wgsl
+│   └── lm311/            # Voltage Comparator
+│       ├── model.wgsl    # lm311_compare(), lm311_window()
+│       └── keyer.wgsl
+└── functional/
+    ├── folding_amp/      # Nonlinear Waveshaper
+    │   ├── spec.json
+    │   ├── model.wgsl    # fold_signal(), multi_fold()
+    │   └── folder.wgsl
+    └── wobbulator/       # CRT Scan Displacement
+        ├── spec.json
+        ├── model.wgsl    # Oscillators, displacement functions
+        └── wobbulator.wgsl
 ```
 
 Each IC is modeled once and reused across any device that uses it.
@@ -248,8 +268,15 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] Mixer with blend modes and luma keying
 - [x] Research orchestrator MCP server
 - [x] Swarm agent system with token tracking
-- [x] Component library (CA3046, CA3080, LM311)
+- [x] Component library (5 ICs + 2 functional blocks)
 - [x] Device workbench for shader testing
+
+### Paik/Abe Progress
+- [x] CA3046 transistor array (differential pairs)
+- [x] CA3019 diode array (PED Control colorizer)
+- [x] CA3054 dual diff amp (matrix mixer, video keyer)
+- [x] Folding amplifier (nonlinear waveshaper)
+- [x] Wobbulator (scan displacement)
 
 ### Future
 - [ ] Video input: Camera and file support

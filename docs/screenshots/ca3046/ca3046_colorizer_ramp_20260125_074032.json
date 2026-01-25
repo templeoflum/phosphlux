@@ -1,0 +1,7 @@
+{
+  "name": "ca3046_colorizer_ramp",
+  "device": "ca3046",
+  "description": "CA3046 transistor array colorizer with horizontal ramp input - differential pair amplitude windows create color bands",
+  "timestamp": "2026-01-25T07:40:32.711763",
+  "image_file": "ca3046_colorizer_ramp_20260125_074032.png"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "ca3019_ped_control_ramp",
+  "device": "ca3019",
+  "description": "CA3019 diode array PED Control colorizer with horizontal ramp - creates 4 color bands from luminance windows",
+  "timestamp": "2026-01-25T07:41:48.641334",
+  "image_file": "ca3019_ped_control_ramp_20260125_074148.png"
+}

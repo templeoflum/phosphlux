@@ -1,0 +1,7 @@
+{
+  "name": "ca3046_colorizer_colorbars",
+  "device": "ca3046",
+  "description": "CA3046 colorizer processing SMPTE color bars - shows color banding effect on varied luminance levels",
+  "timestamp": "2026-01-25T07:40:43.478879",
+  "image_file": "ca3046_colorizer_colorbars_20260125_074043.png"
+}
