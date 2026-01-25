@@ -1,0 +1,11 @@
+{
+  "name": "LM311",
+  "type": "comparator",
+  "manufacturer": "National/TI",
+  "description": "Voltage Comparator",
+  "specs": {
+    "supply_v": 36,
+    "response_ns": 200
+  },
+  "datasheet_source": "TI Datasheet"
+}

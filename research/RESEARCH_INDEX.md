@@ -5,7 +5,7 @@ Collected research materials for historical video synthesis hardware emulation.
 ## Priority Devices (from HISTORICAL_EMULATION_PLAN.md)
 
 ### CRITICAL Priority
-- [ ] Paik/Abe Video Synthesizer (1969)
+- [x] Paik/Abe Video Synthesizer (1969) - schematics collected
 - [ ] Sandin Image Processor (1971)
 - [ ] Rutt/Etra Video Synthesizer (1972)
 - [ ] LZX Visionary (2010)
@@ -25,12 +25,23 @@ Collected research materials for historical video synthesis hardware emulation.
 ### Schematics
 | Device | File | Source | Status |
 |--------|------|--------|--------|
-| *none yet* | | | |
+| Paik/Abe Video Synthesizer | `schematics/Paik-Abe Video Synthesizer - Schematics.pdf` | Archive | Complete |
+| Paik/Abe Video Synthesizer | `schematics/Paik Abe Video Synthesizer Technical Documentation.pdf` | Archive | Complete (87 pages) |
 
-### Datasheets
-| Component | File | Used In | Status |
-|-----------|------|---------|--------|
-| *none yet* | | | |
+### Datasheets / Component Models
+| Component | Type | File | Used In | Status |
+|-----------|------|------|---------|--------|
+| CA3046 | Transistor Array | `components/ics/ca3046/` | Paik/Abe, Sandin IP | **Modeled** |
+| CA3080 | OTA | `components/ics/ca3080/` | Sandin IP | **Modeled** |
+| LM311 | Comparator | `components/ics/lm311/` | Generic | **Modeled** |
+| CA3019 | Diode Array | *need datasheet* | Paik/Abe (amplitude windows) | **PRIORITY** |
+| CA3022 | Video Amp | *need datasheet* | Paik/Abe | Needed |
+| CA3023 | Video Amp | *need datasheet* | Paik/Abe | Needed |
+| CA3054 | Diff Amp | *need datasheet* | Paik/Abe | Needed |
+| CA3055 | Diff Amp | *need datasheet* | Paik/Abe | Needed |
+
+### Component Library
+See `components/README.md` for the component modeling system.
 
 ### Patents
 | Device | Patent # | File | Status |
@@ -63,6 +74,33 @@ Collected research materials for historical video synthesis hardware emulation.
 ---
 
 ## Research Notes
+
+### 2026-01-25: Component Agent Workflow Implemented
+Built automated component research workflow:
+- ComponentAgent looks up part numbers, checks internal database
+- If found: creates spec.json and generates WGSL model automatically
+- If not found: queues datasheet download request for user
+- Models generated: CA3046 (transistor array), CA3080 (OTA), LM311 (comparator)
+
+**WGSL model features:**
+- Transfer functions normalized for 0-1V video signals
+- Key functions for each component type (diff pair, current mirror, etc.)
+- Soft limiting for realistic analog behavior
+
+### 2026-01-25: Paik/Abe Schematics Analyzed
+Collected full technical documentation (87 pages) and schematics (26 pages).
+
+**Key findings from schematics:**
+- 7 camera input channels (CH-1 through CH-7)
+- Matrix & Mixing Amp combines channels → R, G, B outputs
+- Color banding uses **amplitude windows**, NOT wavefolding
+- Key ICs: CA-3019, CA-3022, CA-3023, CA-3046, CA-3054, CA-3055
+- Final output goes to encoder for NTSC signal
+
+**Next steps:**
+- Find datasheets for CA-30xx series ICs
+- Create notes on amplitude window circuit behavior
+- Search for related patents
 
 ### 2024-XX-XX: Project Started
 Initial research infrastructure created. Next steps:

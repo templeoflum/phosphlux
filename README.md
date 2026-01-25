@@ -132,32 +132,80 @@ src/
 3. **Per-Node Textures**: Frame Buffers get independent ping-pong pairs
 4. **Display Pass**: Final output with aspect ratio handling
 
-## Research Orchestrator
+## Research & Development Tools
 
-Phosphlux includes an MCP server for AI-assisted historical research:
-
-```
-tools/research-orchestrator/
-├── mcp_server.py      # Exposes Ollama models as tools
-├── requirements.txt   # Python dependencies
-└── README.md          # Setup and usage
-```
+Phosphlux includes a comprehensive toolchain for AI-assisted historical research and component-level emulation.
 
 ### Philosophy
 **"Follow the inventors, not the interpreters."**
 
-Local Ollama models handle research and code drafts. Claude reviews all outputs, catches errors, and makes final implementation decisions.
+Rather than implementing effects from secondhand descriptions, we model at the **component level**:
+1. Extract IC part numbers from schematics
+2. Find datasheets with transfer functions
+3. Generate WGSL shader models from circuit physics
+4. Compose components into device emulations
 
-### Tools Available
-| Tool | Model | Purpose |
-|------|-------|---------|
-| `quick_query` | phi4-mini | Fast lookups (~4s) |
-| `research_query` | qwen3 | Deep research (~22s) |
-| `generate_shader` | qwen3 | WGSL drafts for review |
-| `extract_from_image` | moondream | Component extraction |
-| `embed_document` | qwen3-embedding | Knowledge base |
+### Research Orchestrator (`tools/research-orchestrator/`)
 
-See [tools/research-orchestrator/README.md](tools/research-orchestrator/README.md) for setup.
+MCP server exposing Ollama models for research queries:
+
+| Tool | Model | Speed | Purpose |
+|------|-------|-------|---------|
+| `quick_query` | phi4-mini | ~4s | Definitions, quick facts |
+| `research_query` | qwen3 | ~22s | Deep research synthesis |
+| `generate_shader` | qwen3 | ~22s | WGSL drafts (Claude reviews) |
+| `extract_from_image` | moondream | ~10s | Component extraction from schematics |
+| `embed_document` | qwen3-embedding | ~2s | Knowledge base indexing |
+
+### Swarm Agent System (`tools/swarm-agent/`)
+
+Multi-agent architecture for parallel research and development:
+
+```
+swarm/
+├── orchestrator.py      # Coordinates agents, handles events
+├── component_agent.py   # IC lookup → spec.json → model.wgsl
+├── research_agent.py    # Ollama-powered research with token tracking
+├── token_tracker.py     # Cloud vs local cost analysis
+└── model_benchmark.py   # A/B testing for prompt optimization
+```
+
+**Token Tracking**: Monitors cloud (Claude) vs local (Ollama) usage with cost analysis.
+
+**Model Benchmarking**: A/B tests prompt variants to find optimal model configurations.
+
+### Device Workbench (`tools/device-workbench/`)
+
+Rust/wgpu application for real-time shader testing:
+
+| MCP Tool | Purpose |
+|----------|---------|
+| `workbench_load_shader` | Hot-reload WGSL shader |
+| `workbench_set_params` | Adjust uniforms in real-time |
+| `workbench_inject_signal` | Load test patterns (ramps, bars, etc.) |
+| `workbench_screenshot` | Capture shader output |
+| `workbench_record_sweep` | Create parameter sweep GIFs |
+| `workbench_export_node` | Export to Phosphlux node palette |
+
+### Component Library (`research/components/`)
+
+Reusable analog IC models:
+
+```
+components/ics/
+├── ca3046/           # NPN Transistor Array
+│   ├── spec.json     # SPICE parameters, pinout
+│   ├── model.wgsl    # differential_pair(), current_mirror()
+│   └── colorizer.wgsl # Paik/Abe amplitude window effect
+├── ca3080/           # OTA (Operational Transconductance Amplifier)
+│   ├── model.wgsl    # ota_transfer(), ota_vca()
+│   └── vca.wgsl      # Voltage controlled amplifier
+└── lm311/            # Voltage Comparator
+    ├── model.wgsl    # lm311_compare(), lm311_window()
+    └── keyer.wgsl    # Video threshold keyer
+```
+
+Each IC is modeled once and reused across any device that uses it.
 
 ## Development
 
@@ -186,6 +234,10 @@ RUST_LOG=info cargo run --release
 - [x] Per-node Frame Buffers for independent feedback
 - [x] Mixer with blend modes and luma keying
 - [x] Research orchestrator MCP server
+- [x] Swarm agent system with token tracking
+- [x] Component library (CA3046, CA3080, LM311)
+- [x] Device workbench for shader testing
+- [ ] Complete Paik/Abe component set (CA3019, CA3022, CA3054)
 - [ ] True Rutt/Etra: Geometry-based scan displacement
 - [ ] Video input: Camera and file support
 - [ ] Audio reactivity

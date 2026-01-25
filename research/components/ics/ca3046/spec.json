@@ -1,0 +1,119 @@
+{
+  "name": "CA3046",
+  "aliases": ["LM3046", "CA3086"],
+  "type": "transistor_array",
+  "manufacturer": "RCA/Intersil",
+  "description": "General Purpose NPN Transistor Array - 5 matched transistors on single die",
+  "package": "DIP-14",
+  "era": "1970s-present",
+
+  "specs": {
+    "vce_max_v": 15,
+    "vceo_max_v": 20,
+    "ic_max_ma": 50,
+    "power_max_mw": 750,
+    "hfe_min": 40,
+    "hfe_typical": 100,
+    "hfe_max": 300,
+    "ft_mhz": 300,
+    "vbe_typical_v": 0.7,
+    "thermal_resistance_jc": 175,
+    "matching_vbe_mv": 5
+  },
+
+  "pinout": {
+    "1": "Q1 collector",
+    "2": "Q1 base",
+    "3": "Q1 emitter / Q2 emitter",
+    "4": "Q2 base",
+    "5": "Q2 collector",
+    "6": "Q3 emitter (substrate)",
+    "7": "Q3 base",
+    "8": "Q3 collector",
+    "9": "Q4 base",
+    "10": "Q4 emitter",
+    "11": "Q4 collector / Q5 collector",
+    "12": "Q5 base",
+    "13": "Q5 emitter (substrate)"
+  },
+
+  "transistor_model": {
+    "type": "BJT_NPN",
+    "is": 1e-14,
+    "bf": 100,
+    "nf": 1.0,
+    "vaf": 100,
+    "ikf": 0.05,
+    "ise": 0,
+    "ne": 1.5,
+    "br": 1,
+    "nr": 1,
+    "var": 100,
+    "ikr": 0,
+    "isc": 0,
+    "nc": 2,
+    "rb": 10,
+    "irb": 0,
+    "rbm": 10,
+    "re": 0,
+    "rc": 10,
+    "cje": 1e-12,
+    "vje": 0.75,
+    "mje": 0.33,
+    "tf": 3e-10,
+    "xtf": 0,
+    "vtf": 0,
+    "itf": 0,
+    "ptf": 0,
+    "cjc": 2e-12,
+    "vjc": 0.75,
+    "mjc": 0.33,
+    "xcjc": 1,
+    "tr": 2e-8,
+    "cjs": 0,
+    "vjs": 0.75,
+    "mjs": 0,
+    "xtb": 0,
+    "eg": 1.11,
+    "xti": 3,
+    "kf": 0,
+    "af": 1,
+    "fc": 0.5
+  },
+
+  "transfer_function": {
+    "description": "Standard BJT exponential characteristic",
+    "equation": "Ic = Is * exp(Vbe / Vt) * (1 + Vce / Vaf)",
+    "simplified_wgsl": "ic = is * exp(vbe / 0.026) * tanh(vce * 10.0)",
+    "parameters": {
+      "Is": "1e-14 A (saturation current)",
+      "Vt": "0.026 V (thermal voltage at 25C)",
+      "Vaf": "100 V (Early voltage)"
+    }
+  },
+
+  "common_uses": [
+    "Current mirrors",
+    "Differential pairs",
+    "Exponential converters",
+    "VCO exponential control",
+    "Temperature compensation"
+  ],
+
+  "used_in_devices": [
+    "Paik/Abe Video Synthesizer",
+    "Sandin Image Processor",
+    "Moog synthesizers",
+    "Many 1970s video art equipment"
+  ],
+
+  "substitutes": [
+    {"part": "LM3046", "notes": "Direct replacement"},
+    {"part": "CA3086", "notes": "Same die, different pinout"},
+    {"part": "THAT340", "notes": "Modern audio-grade replacement"},
+    {"part": "SSM2210", "notes": "Dual matched, can parallel"}
+  ],
+
+  "datasheet_source": "1978 RCA Linear IC Databook",
+  "spice_model_source": "Intersil Application Note"
+}

@@ -550,6 +550,264 @@ Local Ollama models handle heavy lifting (research, code drafts, component extra
 - **v0.6**: GPU signal routing — node graph compiles to GPU operations
 - **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
 - **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
+- **v0.9**: Swarm agent system — multi-agent component research and WGSL model generation
+
+---
+
+## Phase 9: Swarm Agent System & Component-Level Emulation
+
+### Philosophy: Component-Level Analog Hardware Emulation
+
+The key insight driving this phase: **authentic emulation requires modeling at the component level, not the effect level**.
+
+Instead of asking "what does a Paik/Abe colorizer look like?", we ask:
+1. What ICs are in the circuit? (CA3046, CA3080, LM311, etc.)
+2. What are their transfer functions? (BJT exponential, OTA gm control, comparator threshold)
+3. How are they connected? (differential pairs, current mirrors, amplitude windows)
+
+This approach ensures:
+- **Authenticity**: Behavior emerges from real circuit physics
+- **Reusability**: Model CA3046 once, use it in Paik/Abe, Sandin IP, and any circuit that uses it
+- **Happy accidents**: Analog quirks (soft clipping, thermal voltage effects) come naturally
+
+### Document Priority Hierarchy
+
+Research materials ordered by information density:
+```
+Patents > Service Manuals > Schematics > Component Datasheets > Academic Papers
+```
+
+### Swarm Agent Architecture
+
+Built a multi-agent system in `tools/swarm-agent/` for parallel research and development:
+
+```
+tools/swarm-agent/
+├── swarm/
+│   ├── orchestrator.py      # Coordinates agents, handles events
+│   ├── shared_state.py      # Filesystem-based state (research/ folder)
+│   ├── event_bus.py         # Inter-agent communication
+│   ├── base_agent.py        # Agent base class
+│   ├── research_agent.py    # Ollama-powered research
+│   ├── development_agent.py # Code generation
+│   ├── documentation_agent.py # Docs and commits
+│   ├── component_agent.py   # IC lookup and WGSL generation
+│   ├── token_tracker.py     # Cloud vs local cost tracking
+│   └── model_benchmark.py   # A/B testing and self-improvement
+└── tests/
+    └── test_swarm.py        # Comprehensive test suite
+```
+
+**Agent Responsibilities:**
+
+| Agent | Role |
+|-------|------|
+| **Orchestrator** | Coordinates workflow, handles pauses, routes PDF downloads |
+| **ResearchAgent** | Uses Ollama for research queries, tracks token usage |
+| **ComponentAgent** | Looks up ICs, generates spec.json and model.wgsl |
+| **DevelopmentAgent** | Generates shader code, requests component models |
+| **DocumentationAgent** | Tracks progress, prepares commits |
+
+### Token Tracking & Cost Analysis
+
+The system tracks token usage across cloud (Claude) and local (Ollama) models:
+
+```python
+class TokenTracker:
+    def record_cloud(self, operation, input_tokens, output_tokens, latency_ms, agent)
+    def record_local(self, model_name, operation, input_tokens, output_tokens, latency_ms, agent)
+    def get_session_stats() -> Dict  # Returns cost analysis and savings
+```
+
+**Cost Model:**
+- Claude input: $0.003/1K tokens
+- Claude output: $0.015/1K tokens
+- Local models: $0 (compute cost amortized)
+
+By offloading research queries to local Ollama models, we achieve significant cost savings while maintaining quality through Claude's review.
+
+### Model Benchmarking & Self-Improvement
+
+The `ModelBenchmark` class enables A/B testing of prompt variants:
+
+```python
+class ModelBenchmark:
+    def add_ground_truth(topic, facts, source, confidence)
+    def record_response(model, variant, topic, response, latency_ms)
+    def get_best_model() -> (model, variant)  # Returns optimal configuration
+```
+
+**Benchmark Results (Paik/Abe Folding Amplifier Query):**
+
+| Model | Time | Accuracy | Notes |
+|-------|------|----------|-------|
+| tinyllama | 2.6s | ✗ | Wrong (generic amp) |
+| smollm2 | 4.7s | ✗ | Wrong (Sony product) |
+| phi4-mini | 5.4s | ~ | Partial (correct inventors) |
+| llama3.1 | 7.0s | ✓ | Correct (video synthesis context) |
+| granite3.3 | 12.2s | ✓ | **Best** (correct + detailed) |
+| qwen3 | 18.8s | ~ | Partial (audio focus) |
+
+**Finding**: Only 2 of 15 models correctly identified the Paik/Abe folding amplifier as a video synthesis device. This validates our approach of using Claude for quality review.
+
+### Tier Switching Performance
+
+```
+┌─────────┬─────────────┬────────────┬─────────────┐
+│ Tier    │ Cold Start  │ Warm Mean  │ Best For    │
+├─────────┼─────────────┼────────────┼─────────────┤
+│ Fast    │ 8.7s        │ 3.4s       │ Definitions │
+│ Deep    │ 9.3s        │ 10.2s      │ Research    │
+│ Embed   │ 4.4s        │ 0.1s       │ Search      │
+└─────────┴─────────────┴────────────┴─────────────┘
+
+Tier switching overhead: ~3.7s average
+```
+
+### Component Library
+
+Created `research/components/` — a reusable library of analog IC models:
+
+```
+research/components/ics/
+├── ca3046/
+│   ├── spec.json        # Full BJT SPICE parameters
+│   ├── model.wgsl       # Core: differential_pair(), current_mirror()
+│   └── colorizer.wgsl   # App: Paik/Abe amplitude window colorizer
+├── ca3080/
+│   ├── spec.json        # OTA specifications
+│   ├── model.wgsl       # Core: ota_transfer(), ota_vca()
+│   └── vca.wgsl         # App: Voltage controlled amplifier
+└── lm311/
+    ├── spec.json        # Comparator specifications
+    ├── model.wgsl       # Core: lm311_compare(), lm311_window()
+    └── keyer.wgsl       # App: Video threshold keyer
+```
+
+**Component Model Structure:**
+
+Each IC has:
+1. **spec.json** - Electrical specs, pinout, transfer function parameters, SPICE model
+2. **model.wgsl** - Core transfer functions (building blocks)
+3. **Application shaders** - Complete effects demonstrating the component
+
+**Example: CA3046 Differential Pair**
+
+```wgsl
+const CA3046_VT: f32 = 0.026;  // Thermal voltage ~26mV
+
+fn differential_pair(v1: f32, v2: f32, tail_current: f32) -> f32 {
+    let vdiff = v1 - v2;
+    return tanh(vdiff / (2.0 * CA3046_VT)) * tail_current;
+}
+```
+
+The `tanh()` response emerges naturally from BJT physics — this is why modeled colorizers have soft transitions between bands, just like the real hardware.
+
+### Device Workbench
+
+Built `tools/device-workbench/` — a Rust/wgpu application for testing component shaders:
+
+```
+tools/device-workbench/
+├── workbench-app/       # Rust wgpu renderer
+├── mcp_server.py        # MCP tools for Claude integration
+├── test_signals/        # Ramps, colorbars, checkers, etc.
+└── API_SPEC.md          # HTTP API documentation
+```
+
+**MCP Tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `workbench_load_shader` | Hot-reload WGSL shader |
+| `workbench_set_params` | Adjust uniforms in real-time |
+| `workbench_inject_signal` | Load test patterns |
+| `workbench_screenshot` | Capture output |
+| `workbench_record_sweep` | Create parameter sweep GIFs |
+| `workbench_analyze` | Vision model analysis |
+| `workbench_export_node` | Export to Phosphlux node |
+
+### Workbench Test Results
+
+**CA3046 Colorizer on Horizontal Ramp:**
+
+![CA3046 Colorizer](docs/screenshots/ca3046_colorizer_ramp_20260125_050110.png)
+
+The horizontal ramp (black→white) is converted to color bands:
+- Blue (low luma) → Cyan → Green → Yellow → Red (high luma)
+
+The smooth transitions come from the differential pair's `tanh()` response.
+
+**LM311 Window Comparator:**
+
+![LM311 Keyer](docs/screenshots/lm311_keyer_window_20260125_050459.png)
+
+Hard threshold keying with adjustable window width.
+
+### Workflow: Device Emulation Pipeline
+
+```
+1. IDENTIFY    → Find device documentation (patents, service manuals, schematics)
+2. STUB        → Create device stub (inputs, outputs, what it does, not how)
+3. DECOMPOSE   → Extract component list (ICs, transistors, key passives)
+4. COLLECT     → Download datasheets for each component
+5. MODEL       → Generate spec.json and model.wgsl for each IC
+6. ASSEMBLE    → Compose component models into device shader
+7. VALIDATE    → Test in workbench against reference materials
+```
+
+### Current Component Status
+
+| Component | Type | Status | Used In |
+|-----------|------|--------|---------|
+| CA3046 | Transistor Array | ✓ Modeled | Paik/Abe, Sandin IP |
+| CA3080 | OTA | ✓ Modeled | Sandin IP |
+| LM311 | Comparator | ✓ Modeled | Various |
+| CA3019 | Diode Array | Need datasheet | Paik/Abe (amplitude windows) |
+| CA3022 | Video Amp | Need datasheet | Paik/Abe |
+| CA3054 | Diff Amp | Need datasheet | Paik/Abe |
+
+### Key Findings
+
+1. **Most LLMs don't know video synthesis history** — Only 2/15 models correctly identified the Paik/Abe folding amplifier. This validates using specialized research with Claude review.
+
+2. **Component-level modeling enables reuse** — The CA3046 model works for any circuit using that IC, not just one specific device.
+
+3. **Transfer functions capture analog behavior** — The `tanh()` in differential pairs, soft limiting in OTAs — these emerge from physics, not artistic choice.
+
+4. **Hot-reload workbench accelerates iteration** — Test shaders in real-time without recompiling the main application.
+
+---
+
+## Files Reference (Phase 9)
+
+| File | Purpose |
+|------|---------|
+| `tools/swarm-agent/swarm/orchestrator.py` | Multi-agent coordination |
+| `tools/swarm-agent/swarm/component_agent.py` | IC lookup and WGSL generation |
+| `tools/swarm-agent/swarm/token_tracker.py` | Cloud vs local cost tracking |
+| `tools/swarm-agent/swarm/model_benchmark.py` | A/B testing infrastructure |
+| `tools/device-workbench/mcp_server.py` | Workbench MCP tools |
+| `tools/device-workbench/workbench-app/` | Rust/wgpu test renderer |
+| `research/components/README.md` | Component library documentation |
+| `research/components/ics/*/model.wgsl` | Core IC transfer functions |
+| `research/components/ics/*/*.wgsl` | Application shaders |
+| `research/RESEARCH_INDEX.md` | Master research tracking |
+
+---
+
+## Version History
+
+- **v0.1**: TypeScript prototype (2 FPS)
+- **v0.2**: Rust + wgpu rewrite (60 FPS)
+- **v0.3**: egui control panel integration
+- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
+- **v0.5**: Visual node editor with full UX
+- **v0.6**: GPU signal routing — node graph compiles to GPU operations
+- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
+- **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
+- **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking, component library with CA3046/CA3080/LM311 models, device workbench for shader testing
 
 ---
 

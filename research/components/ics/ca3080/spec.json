@@ -1,0 +1,12 @@
+{
+  "name": "CA3080",
+  "type": "ota",
+  "manufacturer": "RCA/Intersil",
+  "description": "Operational Transconductance Amplifier",
+  "specs": {
+    "supply_v": 15,
+    "gm_max": 9600,
+    "ibias_max_ma": 2
+  },
+  "datasheet_source": "1978 RCA Linear IC Databook"
+}
