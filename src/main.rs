@@ -28,13 +28,7 @@ use crate::gpu::renderer::{Renderer, SynthUniforms};
 use crate::ui::ControlPanel;
 use crate::ui::controls::{SynthParams, NoiseType, ColorizerType, ShapeType};
 use crate::ui::patch::SignalPatch;
-
-/// View mode for the left panel
-#[derive(Clone, Copy, PartialEq)]
-enum LeftPanelMode {
-    NodeGraph,
-    Parameters,
-}
+use crate::ui::node_editor::{NodeEditor, AspectRatio, render_node_canvas, render_node_palette, render_inspector};
 
 struct App {
     window: Option<Arc<Window>>,
@@ -50,8 +44,7 @@ struct App {
 
     // Node graph
     patch: SignalPatch,
-    left_panel_mode: LeftPanelMode,
-    left_panel_width: f32,
+    node_editor: NodeEditor,
 
     // Track preview size for texture resize
     last_preview_size: (u32, u32),
@@ -69,9 +62,8 @@ impl App {
             egui_renderer: None,
             control_panel: ControlPanel::new(),
             patch: SignalPatch::default_patch(),
-            left_panel_mode: LeftPanelMode::Parameters,
-            left_panel_width: 320.0,
-            last_preview_size: (640, 480),
+            node_editor: NodeEditor::new(),
+            last_preview_size: (320, 240),
         }
     }
 }
@@ -115,7 +107,7 @@ impl ApplicationHandler for App {
             self.renderer = Some(renderer);
             self.window = Some(window);
 
-            log::info!("Window created with paned layout");
+            log::info!("Window created with node editor layout");
         }
     }
 
@@ -240,17 +232,17 @@ impl App {
         let full_output = {
             let control_panel_params = &mut self.control_panel.params;
             let patch = &mut self.patch;
-            let left_panel_mode = &mut self.left_panel_mode;
+            let node_editor = &mut self.node_editor;
             let last_preview_size = &mut self.last_preview_size;
             let renderer = self.renderer.as_mut().unwrap();
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
 
             self.egui_ctx.run(raw_input, |ctx| {
-                render_paned_layout_inner(
+                render_node_editor_layout(
                     ctx,
                     control_panel_params,
                     patch,
-                    left_panel_mode,
+                    node_editor,
                     last_preview_size,
                     renderer,
                     egui_renderer,
@@ -280,15 +272,23 @@ impl App {
             }
         }
     }
-
 }
 
-/// Free function for paned layout to avoid borrow conflicts
-fn render_paned_layout_inner(
+/// Node editor layout:
+/// ┌─────────────────────────────────────────────────────────────────┐
+/// │ Menu Bar                                                [FPS]   │
+/// ├──────────┬────────────────────────────────────────┬─────────────┤
+/// │          │                                        │  PREVIEW    │
+/// │  NODE    │                                        │             │
+/// │ PALETTE  │       NODE GRAPH EDITOR                ├─────────────┤
+/// │          │                                        │  INSPECTOR  │
+/// │          │                                        │             │
+/// └──────────┴────────────────────────────────────────┴─────────────┘
+fn render_node_editor_layout(
     ctx: &egui::Context,
     control_panel_params: &mut SynthParams,
     patch: &mut SignalPatch,
-    left_panel_mode: &mut LeftPanelMode,
+    node_editor: &mut NodeEditor,
     last_preview_size: &mut (u32, u32),
     renderer: &mut Renderer,
     egui_renderer: &mut egui_wgpu::Renderer,
@@ -308,6 +308,12 @@ fn render_paned_layout_inner(
                 ui.separator();
                 if ui.button("Exit").clicked() {
                     std::process::exit(0);
+                }
+            });
+            ui.menu_button("Edit", |ui| {
+                if ui.button("Reset Parameters").clicked() {
+                    *control_panel_params = SynthParams::default();
+                    ui.close_menu();
                 }
             });
             ui.menu_button("Presets", |ui| {
@@ -351,6 +357,13 @@ fn render_paned_layout_inner(
                 ui.label("Space - Reset params");
                 ui.label("1-5 - Quick presets");
                 ui.label("Esc - Exit");
+                ui.separator();
+                ui.label("Node Editor:");
+                ui.label("  Drag nodes to move");
+                ui.label("  Drag from output to input to connect");
+                ui.label("  Right-click node to delete");
+                ui.label("  Middle-drag or Alt+drag to pan");
+                ui.label("  Scroll to zoom");
             });
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -359,174 +372,142 @@ fn render_paned_layout_inner(
         });
     });
 
-    // Left panel - Controls or Node Graph
-    egui::SidePanel::left("left_panel")
+    // Left panel - Node Palette
+    egui::SidePanel::left("node_palette")
         .resizable(true)
-        .default_width(320.0)
-        .width_range(200.0..=600.0)
+        .default_width(150.0)
+        .width_range(120.0..=250.0)
         .show(ctx, |ui| {
-            // Tab bar for switching modes
-            ui.horizontal(|ui| {
-                ui.selectable_value(left_panel_mode, LeftPanelMode::Parameters, "Parameters");
-                ui.selectable_value(left_panel_mode, LeftPanelMode::NodeGraph, "Node Graph");
-            });
-            ui.separator();
-
-            match left_panel_mode {
-                LeftPanelMode::Parameters => {
-                    render_parameters_panel_inner(ui, control_panel_params);
-                }
-                LeftPanelMode::NodeGraph => {
-                    render_node_graph_panel_inner(ui, patch);
-                }
-            }
+            render_node_palette(ui, patch);
         });
 
-    // Central panel - Video Preview
-    egui::CentralPanel::default().show(ctx, |ui| {
-        // Get available size for preview
-        let available = ui.available_size();
-        let preview_width = available.x.max(64.0) as u32;
-        let preview_height = available.y.max(64.0) as u32;
+    // Right panel - Preview + Inspector (stacked vertically)
+    egui::SidePanel::right("right_panel")
+        .resizable(true)
+        .default_width(280.0)
+        .width_range(200.0..=400.0)
+        .show(ctx, |ui| {
+            // Top section: Preview
+            let available_height = ui.available_height();
+            let preview_height = (available_height * 0.45).max(150.0);
 
-        // Resize output texture if needed
-        if (preview_width, preview_height) != *last_preview_size {
-            renderer.resize_output(preview_width, preview_height, egui_renderer);
-            *last_preview_size = (preview_width, preview_height);
-        }
+            egui::Frame::dark_canvas(&ui.style())
+                .show(ui, |ui| {
+                    ui.set_min_height(preview_height);
+                    ui.set_max_height(preview_height);
 
-        // Display the synthesizer output
-        if let Some(texture_id) = renderer.output_texture_id {
-            let size = egui::Vec2::new(available.x, available.y);
-            ui.add(egui::Image::new(egui::load::SizedTexture::new(texture_id, size)));
-        } else {
-            ui.centered_and_justified(|ui| {
-                ui.label("Initializing video output...");
+                    // Preview header with aspect ratio selector
+                    ui.horizontal(|ui| {
+                        ui.heading("Preview");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            egui::ComboBox::from_id_salt("aspect_ratio")
+                                .selected_text(node_editor.aspect_ratio.display_name())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Free, AspectRatio::Free.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Square, AspectRatio::Square.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Standard, AspectRatio::Standard.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Wide, AspectRatio::Wide.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait43, AspectRatio::Portrait43.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait169, AspectRatio::Portrait169.display_name());
+                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Cinemascope, AspectRatio::Cinemascope.display_name());
+                                });
+                        });
+                    });
+
+                    // Get available size for preview
+                    let available = ui.available_size();
+                    let content_area = egui::Vec2::new(available.x.max(64.0), (available.y - 8.0).max(64.0));
+
+                    // Calculate size with aspect ratio lock
+                    let preview_size = node_editor.aspect_ratio.fit_size(content_area);
+                    let preview_width = preview_size.x as u32;
+                    let preview_h = preview_size.y as u32;
+
+                    // Resize output texture if needed
+                    if (preview_width, preview_h) != *last_preview_size {
+                        renderer.resize_output(preview_width, preview_h, egui_renderer);
+                        *last_preview_size = (preview_width, preview_h);
+                    }
+
+                    // Center the preview in the available space
+                    ui.vertical_centered(|ui| {
+                        // Display the synthesizer output
+                        if let Some(texture_id) = renderer.output_texture_id {
+                            ui.add(egui::Image::new(egui::load::SizedTexture::new(texture_id, preview_size)));
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label("Initializing...");
+                            });
+                        }
+                    });
+                });
+
+            ui.separator();
+
+            // Bottom section: Inspector
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                render_inspector(ui, node_editor, patch);
+
+                ui.separator();
+
+                // Also show global parameters here
+                ui.collapsing("Global Parameters", |ui| {
+                    render_parameters_compact(ui, control_panel_params);
+                });
             });
-        }
-    });
+        });
+
+    // Central panel - Node Graph Editor
+    egui::CentralPanel::default()
+        .frame(egui::Frame::dark_canvas(&ctx.style()))
+        .show(ctx, |ui| {
+            render_node_canvas(ui, node_editor, patch);
+        });
 }
 
-/// Render parameters panel (free function version)
-fn render_parameters_panel_inner(ui: &mut egui::Ui, params: &mut SynthParams) {
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.heading("Feedback");
+/// Compact parameter view for the inspector panel
+fn render_parameters_compact(ui: &mut egui::Ui, params: &mut SynthParams) {
+    ui.collapsing("Feedback", |ui| {
         let fb = &mut params.feedback;
         ui.add(egui::Slider::new(&mut fb.mix, 0.0..=0.99).text("Mix"));
         ui.add(egui::Slider::new(&mut fb.zoom, 0.9..=1.1).text("Zoom"));
         ui.add(egui::Slider::new(&mut fb.rotation, -0.1..=0.1).text("Rotation"));
-        ui.add(egui::Slider::new(&mut fb.hue_shift, -0.05..=0.05).text("Hue Shift"));
+        ui.add(egui::Slider::new(&mut fb.hue_shift, -0.05..=0.05).text("Hue"));
         ui.add(egui::Slider::new(&mut fb.decay, 0.9..=1.0).text("Decay"));
-        ui.add(egui::Slider::new(&mut fb.saturation, 0.0..=2.0).text("Saturation"));
-        ui.add(egui::Slider::new(&mut fb.offset_x, -0.1..=0.1).text("Offset X"));
-        ui.add(egui::Slider::new(&mut fb.offset_y, -0.1..=0.1).text("Offset Y"));
+    });
 
-        ui.separator();
-        ui.heading("Luma Key");
+    ui.collapsing("Luma Key", |ui| {
         ui.checkbox(&mut params.key_enabled, "Enable");
         if params.key_enabled {
-            ui.add(egui::Slider::new(&mut params.key_clip_black, 0.0..=1.0).text("Clip Black"));
-            ui.add(egui::Slider::new(&mut params.key_clip_white, 0.0..=1.0).text("Clip White"));
-            ui.checkbox(&mut params.key_invert, "Invert");
+            ui.add(egui::Slider::new(&mut params.key_clip_black, 0.0..=1.0).text("Black"));
+            ui.add(egui::Slider::new(&mut params.key_clip_white, 0.0..=1.0).text("White"));
         }
+    });
 
-        ui.separator();
-        ui.heading("Luminance Displacement");
-        ui.checkbox(&mut params.rutt_etra_enabled, "Enable");
-        if params.rutt_etra_enabled {
-            ui.add(egui::Slider::new(&mut params.rutt_etra_amount, 0.0..=0.5).text("Amount"));
-        }
-
-        ui.separator();
-        ui.heading("Oscillators");
-        ui.add(egui::Slider::new(&mut params.osc1_freq, 0.1..=20.0).text("Osc1 Freq"));
-        ui.add(egui::Slider::new(&mut params.osc1_phase, 0.0..=1.0).text("Osc1 Phase"));
-        ui.add(egui::Slider::new(&mut params.osc2_freq, 0.1..=20.0).text("Osc2 Freq"));
-        ui.add(egui::Slider::new(&mut params.osc2_phase, 0.0..=1.0).text("Osc2 Phase"));
-
-        ui.separator();
-        ui.heading("Noise");
-        ui.add(egui::Slider::new(&mut params.noise_mix, 0.0..=1.0).text("Mix"));
+    ui.collapsing("Shapes", |ui| {
         egui::ComboBox::from_label("Type")
-            .selected_text(format!("{:?}", params.noise_type))
+            .selected_text(format!("{:?}", params.shape_type))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut params.noise_type, NoiseType::White, "White");
-                ui.selectable_value(&mut params.noise_type, NoiseType::Pink, "Pink");
-                ui.selectable_value(&mut params.noise_type, NoiseType::Brown, "Brown");
+                ui.selectable_value(&mut params.shape_type, ShapeType::None, "None");
+                ui.selectable_value(&mut params.shape_type, ShapeType::Circle, "Circle");
+                ui.selectable_value(&mut params.shape_type, ShapeType::Rectangle, "Rect");
+                ui.selectable_value(&mut params.shape_type, ShapeType::Diamond, "Diamond");
+                ui.selectable_value(&mut params.shape_type, ShapeType::Star, "Star");
             });
+        if params.shape_type != ShapeType::None {
+            ui.add(egui::Slider::new(&mut params.shape_size, 0.05..=0.8).text("Size"));
+        }
+    });
 
-        ui.separator();
-        ui.heading("Colorizer");
+    ui.collapsing("Colorizer", |ui| {
         egui::ComboBox::from_label("Mode")
             .selected_text(format!("{:?}", params.colorizer_type))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut params.colorizer_type, ColorizerType::Spectrum, "Spectrum");
                 ui.selectable_value(&mut params.colorizer_type, ColorizerType::Threshold, "Threshold");
-                ui.selectable_value(&mut params.colorizer_type, ColorizerType::Grayscale, "Grayscale");
+                ui.selectable_value(&mut params.colorizer_type, ColorizerType::Grayscale, "Gray");
             });
-        if params.colorizer_type == ColorizerType::Threshold {
-            ui.add(egui::Slider::new(&mut params.colorizer_levels, 2.0..=16.0).text("Levels"));
-        }
-
-        ui.separator();
-        ui.heading("Shapes");
-        egui::ComboBox::from_label("Shape")
-            .selected_text(format!("{:?}", params.shape_type))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut params.shape_type, ShapeType::None, "None");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Circle, "Circle");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Rectangle, "Rectangle");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Diamond, "Diamond");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Star, "Star");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Bars, "Bars");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Checker, "Checker");
-            });
-        if params.shape_type != ShapeType::None {
-            ui.add(egui::Slider::new(&mut params.shape_size, 0.05..=0.8).text("Size"));
-            ui.add(egui::Slider::new(&mut params.shape_softness, 0.0..=0.2).text("Softness"));
-        }
-
-        ui.separator();
-        ui.heading("CRT Effects");
-        ui.add(egui::Slider::new(&mut params.scanline_intensity, 0.0..=0.5).text("Scanlines"));
-        ui.add(egui::Slider::new(&mut params.curvature, 0.0..=0.3).text("Curvature"));
-        ui.add(egui::Slider::new(&mut params.vignette_amount, 0.0..=1.0).text("Vignette"));
-
-        ui.separator();
-        if ui.button("Reset All").clicked() {
-            *params = SynthParams::default();
-        }
     });
-}
-
-/// Render node graph panel (free function version)
-fn render_node_graph_panel_inner(ui: &mut egui::Ui, patch: &mut SignalPatch) {
-    ui.label("Node Graph Editor");
-    ui.separator();
-
-    // Show patch info
-    ui.label(format!("Nodes: {}", patch.nodes.len()));
-    ui.label(format!("Connections: {}", patch.connections.len()));
-
-    ui.separator();
-    ui.label("Node Types:");
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        // List all node types by category
-        for category in ["Sources", "Waveshapers", "Mixing", "Color", "Colorizers", "Outputs"] {
-            egui::CollapsingHeader::new(category).show(ui, |ui| {
-                for node in &patch.nodes {
-                    if node.node_type.category() == category {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("[{}] {}", node.id, node.node_type.display_name()));
-                        });
-                    }
-                }
-            });
-        }
-    });
-
-    ui.separator();
-    ui.label("(Visual node editor coming in Phase 2)");
 }
 
 /// Sync UI SynthParams to GPU SynthUniforms
