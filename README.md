@@ -228,8 +228,21 @@ cargo build --release
 RUST_LOG=info cargo run --release
 ```
 
-## Roadmap
+## v1 Emulation Roadmap
 
+Five foundational video synthesis devices, in order:
+
+| # | Device | Era | Status |
+|---|--------|-----|--------|
+| 1 | **Paik/Abe Video Synthesizer** | 1969 | 🔄 In Progress |
+| 2 | **Sandin Image Processor** | 1971 | ⏳ Pending |
+| 3 | **Rutt/Etra Video Synthesizer** | 1972 | ⏳ Pending |
+| 4 | **Jones Colorizer** | 1974 | ⏳ Pending |
+| 5 | **LZX Cadet Series** | 2012 | ⏳ Pending |
+
+See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed component requirements and milestones.
+
+### Infrastructure Complete
 - [x] Visual node editor with pan/zoom
 - [x] Per-node Frame Buffers for independent feedback
 - [x] Mixer with blend modes and luma keying
@@ -237,8 +250,8 @@ RUST_LOG=info cargo run --release
 - [x] Swarm agent system with token tracking
 - [x] Component library (CA3046, CA3080, LM311)
 - [x] Device workbench for shader testing
-- [ ] Complete Paik/Abe component set (CA3019, CA3022, CA3054)
-- [ ] True Rutt/Etra: Geometry-based scan displacement
+
+### Future
 - [ ] Video input: Camera and file support
 - [ ] Audio reactivity
 - [ ] MIDI/OSC control
