@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "research": {
+      "command": "python",
+      "args": ["tools/research-orchestrator/mcp_server.py"]
+    }
+  }
+}

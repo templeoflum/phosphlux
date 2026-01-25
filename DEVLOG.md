@@ -442,18 +442,6 @@ This allows single `queue.write_buffer()` call per frame.
 
 ---
 
-## Version History
-
-- **v0.1**: TypeScript prototype (2 FPS)
-- **v0.2**: Rust + wgpu rewrite (60 FPS)
-- **v0.3**: egui control panel integration
-- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
-- **v0.5**: Visual node editor with full UX
-- **v0.6**: GPU signal routing — node graph compiles to GPU operations
-- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
-
----
-
 ## Files Reference (Updated)
 
 | File | Purpose |
@@ -514,35 +502,54 @@ Rather than implementing effects based on secondhand descriptions, we trace the 
 
 ### Research Agent Architecture
 
-Created `tools/research-orchestrator/` — an MCP server that exposes Ollama models as tools for Claude CLI:
+Created `tools/research-orchestrator/` — an MCP server that exposes Ollama models as tools for Claude CLI.
 
-| Tool | Model | Purpose |
-|------|-------|---------|
-| `research_query` | qwen3 | Deep research on video synthesis topics |
-| `analyze_schematic` | minicpm-v | Vision-based schematic analysis |
-| `generate_shader` | qwen2.5-coder | WGSL shader generation |
-| `verify_emulation` | deepseek-r1 | Accuracy verification |
-| `embed_document` | nomic-embed-text | Build searchable knowledge base |
+**Architecture: Claude as Orchestrator + Quality Gate**
 
-### Research Directory Structure
-```
-research/
-├── schematics/     # Schematic images
-├── datasheets/     # Component datasheets
-├── patents/        # Patent PDFs
-├── manuals/        # Service manuals
-└── notes/          # Research notes
-```
+Local Ollama models handle heavy lifting (research, code drafts, component extraction). Claude reviews all outputs, catches errors/inconsistencies, and makes final implementation decisions. Nothing gets committed without Claude's verification.
+
+**Tiered Model System:**
+
+| Tier | Model | Speed | Purpose |
+|------|-------|-------|---------|
+| Fast | phi4-mini | ~4s | Quick lookups, simple questions |
+| Deep | qwen3 | ~22s | Research synthesis, shader drafts |
+| Vision | moondream | ~5-10s | Component extraction, OCR |
+| Embed | qwen3-embedding | ~2s | Knowledge base search |
+
+**Tools Available:**
+
+| Tool | Tier | Purpose |
+|------|------|---------|
+| `quick_query` | Fast | Simple questions, definitions |
+| `research_query` | Deep | Video synthesis research |
+| `generate_shader` | Deep | WGSL drafts (Claude reviews) |
+| `extract_from_image` | Vision | Component lists from schematics |
+| `embed_document` | Embed | Add to knowledge base |
+| `search_knowledge` | Embed | Search knowledge base |
+
+**Design Decisions:**
+- Removed `verify_emulation` tool — Claude handles all verification
+- Removed slow vision models (qwen3-vl took 11+ minutes) — Claude handles deep schematic analysis directly
+- Added moondream for quick component extraction only
+- Added `quick_query` for fast lookups via phi4-mini
 
 ### Priority Devices (from HISTORICAL_EMULATION_PLAN.md)
 1. **CRITICAL**: Paik/Abe, Sandin IP, Rutt/Etra, LZX Visionary, Sony PVM
 2. **HIGH**: Oscilloscope Art, Beck DVS, Jones Colorizer, LZX Cadet, Edirol V4
 
-### Next Steps
-1. Install MCP server dependencies: `pip install -r tools/research-orchestrator/requirements.txt`
-2. Add MCP config to Claude CLI
-3. Begin systematic research on Paik/Abe synthesizer
-4. Collect schematics from LZX Industries GitHub
+---
+
+## Version History
+
+- **v0.1**: TypeScript prototype (2 FPS)
+- **v0.2**: Rust + wgpu rewrite (60 FPS)
+- **v0.3**: egui control panel integration
+- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
+- **v0.5**: Visual node editor with full UX
+- **v0.6**: GPU signal routing — node graph compiles to GPU operations
+- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
+- **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
 
 ---
 

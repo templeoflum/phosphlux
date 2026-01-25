@@ -22,31 +22,43 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 - **Jones Colorizer** (1974) - Diode/layered mixing, multi-level keying
 - **LZX Industries** (2008-present) - Modern modular video synthesis standards
 
-## Screenshots
-
-*Coming soon - the application renders real-time generative video with feedback effects*
-
 ## Features
 
-### Video Effects
-- **Feedback Loop**: Zoom, rotation, offset, hue shift, saturation decay
-- **Luma Keying**: Adjustable black/white clip points with invert
-- **Luminance Displacement**: Brightness-driven UV distortion
-- **Noise Generation**: White, pink, and brown noise types
-- **Shape Generators**: Circle, rectangle, diamond, star, bars, checker
-- **Colorization**: Spectrum mapping, threshold posterization, grayscale
+### Visual Node Editor
+- **Pan/zoom canvas** with grid background
+- **Draggable nodes** with category-colored headers
+- **Bezier curve connections** between sockets
+- **Real-time parameter adjustment** via inspector panel
+- **Immediate input response** - no drag threshold lag
+
+### Node Types
+
+**Sources**
+- Ramps (Horizontal, Vertical, Radial)
+- Oscillators
+- Noise (White, Pink, Brown)
+- Shape generators
+- Frame Buffer (per-node feedback with independent parameters)
+
+**Processing**
+- Waveshapers: Folder, Quantizer, Soft Clip, Solarize, Inverter
+- Mixer: 8 blend modes (Mix, Add, Multiply, Screen, Overlay, Difference, Luma Key A/B)
+- Color: Hue Shift
+- Colorizers: Spectrum, Threshold, Gradient
+
+**Outputs**
+- Display node with aspect ratio lock (Free, 1:1, 4:3, 16:9, 3:4, 9:16, 2.35:1)
+
+### Per-Node Frame Buffers
+Each Frame Buffer node has its own ping-pong texture pair with independent parameters:
+- Zoom, rotation, offset
+- Hue shift, saturation, decay
+- Multiple independent feedback loops can coexist
 
 ### CRT Emulation
 - Scanline simulation
 - Screen curvature (barrel distortion)
 - Vignette effect
-
-### User Interface
-- Blender-style paned layout
-- Resizable parameter panel
-- Real-time parameter adjustment
-- Preset system (keyboard shortcuts 1-5)
-- Prepared for node-based compositor (coming soon)
 
 ## Requirements
 
@@ -58,7 +70,7 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 
 ```bash
 # Clone the repository
-git clone https://github.com/templeoflum/phosphlux.git
+git clone https://github.com/yourusername/phosphlux.git
 cd phosphlux
 
 # Build and run
@@ -71,48 +83,81 @@ cargo run --release
 
 | Key | Action |
 |-----|--------|
-| `Space` | Reset all parameters to defaults |
-| `1` | Preset: Spiral |
-| `2` | Preset: Tunnel |
-| `3` | Preset: Chaos |
-| `4` | Preset: Drift |
-| `5` | Preset: Kaleidoscope |
+| `Del` / `Backspace` | Delete selected node |
+| `F` | Frame/center on selected node |
+| `Home` | Reset view (pan and zoom) |
 | `Esc` | Exit |
 
 ### Interface
 
-The application opens in a maximized window with:
-- **Left Panel**: Parameter controls organized by category
-- **Central Panel**: Real-time video preview
-- **Top Menu**: File operations, presets, help
+The application uses a 4-panel layout:
+
+```
++------------+---------------------------+-------------+
+|            |                           |   PREVIEW   |
+|   NODE     |                           |   [4:3]     |
+|  PALETTE   |     NODE GRAPH EDITOR     +-------------+
+|            |                           |  INSPECTOR  |
+|            |                           |             |
++------------+---------------------------+-------------+
+```
+
+- **Left**: Node palette - drag nodes onto canvas
+- **Center**: Node graph editor with pan/zoom
+- **Top Right**: Video preview with aspect ratio selector
+- **Bottom Right**: Inspector showing selected node parameters
 
 ## Architecture
 
 ```
 src/
 ├── core/
-│   └── timing.rs       # NTSC/PAL sync generation
+│   ├── timing.rs          # NTSC/PAL sync generation
+│   └── signal.rs          # Signal types, voltage standards
 ├── gpu/
-│   ├── renderer.rs     # wgpu pipeline, feedback buffers
-│   └── shaders/
-│       ├── composite.wgsl  # Main synthesis
-│       ├── feedback.wgsl   # Recursive feedback
-│       └── crt.wgsl        # Display emulation
-├── modules/
-│   ├── oscillators.rs  # Signal generators
-│   └── waveshapers.rs  # Signal processing
+│   ├── renderer.rs        # wgpu pipeline, per-node Frame Buffers
+│   └── graph_compiler.rs  # Topological sort, GPU operation dispatch
+├── shaders/
+│   └── main.wgsl          # Combined synthesis + graph evaluation
 ├── ui/
-│   ├── controls.rs     # Parameter structures
-│   └── patch.rs        # Node graph (data only)
-└── main.rs             # Application entry
+│   ├── patch.rs           # Node graph data structures
+│   └── node_editor.rs     # Visual editor, inspector
+└── main.rs                # Application entry, 4-panel layout
 ```
 
 ### GPU Pipeline
 
-1. **Composite Pass**: Generate base imagery (shapes, noise, oscillators)
-2. **Feedback Pass**: Apply recursive transform (ping-pong buffers)
-3. **CRT Pass**: Apply display emulation
-4. **egui Pass**: Render UI overlay
+1. **Graph Compilation**: Topological sort with cycle-aware handling
+2. **Operation Dispatch**: Nodes compiled to GPU storage buffer operations
+3. **Per-Node Textures**: Frame Buffers get independent ping-pong pairs
+4. **Display Pass**: Final output with aspect ratio handling
+
+## Research Orchestrator
+
+Phosphlux includes an MCP server for AI-assisted historical research:
+
+```
+tools/research-orchestrator/
+├── mcp_server.py      # Exposes Ollama models as tools
+├── requirements.txt   # Python dependencies
+└── README.md          # Setup and usage
+```
+
+### Philosophy
+**"Follow the inventors, not the interpreters."**
+
+Local Ollama models handle research and code drafts. Claude reviews all outputs, catches errors, and makes final implementation decisions.
+
+### Tools Available
+| Tool | Model | Purpose |
+|------|-------|---------|
+| `quick_query` | phi4-mini | Fast lookups (~4s) |
+| `research_query` | qwen3 | Deep research (~22s) |
+| `generate_shader` | qwen3 | WGSL drafts for review |
+| `extract_from_image` | moondream | Component extraction |
+| `embed_document` | qwen3-embedding | Knowledge base |
+
+See [tools/research-orchestrator/README.md](tools/research-orchestrator/README.md) for setup.
 
 ## Development
 
@@ -120,17 +165,16 @@ See [DEVLOG.md](DEVLOG.md) for detailed development history and technical decisi
 
 See [docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md](docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md) for comprehensive research on analog video synthesis techniques.
 
+See [docs/HISTORICAL_EMULATION_PLAN.md](docs/HISTORICAL_EMULATION_PLAN.md) for the research-first emulation roadmap.
+
 ### Building
 
 ```bash
 # Debug build
 cargo build
 
-# Release build (recommended for performance)
+# Release build (recommended)
 cargo build --release
-
-# Run tests
-cargo test
 
 # Run with logging
 RUST_LOG=info cargo run --release
@@ -138,46 +182,29 @@ RUST_LOG=info cargo run --release
 
 ## Roadmap
 
-- [ ] **Node-Based Compositor**: Visual signal routing like TouchDesigner
-- [ ] **True Rutt/Etra**: Geometry-based scan displacement (vs. UV distortion)
-- [ ] **Multi-Channel Textures**: Main, Feedback, Key, Aux channels
-- [ ] **Video Input**: Camera and file support
-- [ ] **Audio Reactivity**: Modulate parameters from audio
-- [ ] **MIDI/OSC Control**: External hardware control
-- [ ] **Patch Save/Load**: Serialize and restore configurations
-
-## Technical Reference
-
-The project draws from extensive research into historical video synthesizers:
-
-- **CRT Physics**: Phosphor persistence, beam bloom, electron gun behavior
-- **NTSC Standard**: 525 lines @ 59.94Hz, 3.579545 MHz color subcarrier
-- **Feedback Theory**: Ping-pong buffers, decay coefficients, stability
-- **Circuit Modeling**: Op-amp characteristics, diode mixing, waveshaping
-
-See the full [Technical Reference](docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md) for implementation details.
+- [x] Visual node editor with pan/zoom
+- [x] Per-node Frame Buffers for independent feedback
+- [x] Mixer with blend modes and luma keying
+- [x] Research orchestrator MCP server
+- [ ] True Rutt/Etra: Geometry-based scan displacement
+- [ ] Video input: Camera and file support
+- [ ] Audio reactivity
+- [ ] MIDI/OSC control
+- [ ] Patch save/load
 
 ## Performance Notes
 
-The transition from TypeScript prototype to Rust achieved a **30x performance improvement** (2 FPS → 60 FPS):
+The transition from TypeScript prototype to Rust achieved a **30x performance improvement** (2 FPS to 60 FPS):
 
-- All pixel processing happens in GPU shaders
-- Uniform buffers minimize CPU-GPU data transfer
-- Ping-pong framebuffers enable stable feedback without read-after-write hazards
-- egui's immediate mode minimizes UI overhead
+- All pixel processing in GPU shaders
+- Uniform buffers minimize CPU-GPU transfer
+- Ping-pong framebuffers enable stable feedback
+- Graph compiler with topological sort
+- Storage buffer pipeline for dynamic operation dispatch
 
 ## The Name
 
-**Phosphlux** combines *phosphor* (the luminescent coating inside CRT displays that glows when struck by electron beams) with *flux* (continuous flow and change). Together they capture the essence of analog video synthesis: light as a flowing, transforming substance.
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Read the technical reference document
-2. Research the original analog implementation for any new effect
-3. Maintain real-time performance (60 FPS target)
-4. Add appropriate documentation
+**Phosphlux** combines *phosphor* (the luminescent coating inside CRT displays) with *flux* (continuous flow and change). Together they capture the essence of analog video synthesis: light as a flowing, transforming substance.
 
 ## License
 
@@ -193,8 +220,6 @@ This project draws inspiration from the pioneering work of:
 - Steve Rutt & Bill Etra
 - Dave Jones
 - Lars Larsen (LZX Industries)
-
-And the ongoing community of video synthesis artists and engineers.
 
 ## References
 
