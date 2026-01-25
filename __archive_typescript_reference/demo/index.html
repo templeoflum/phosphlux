@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analog Video Synthesizer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      color: #00ff88;
+      text-shadow: 0 0 10px #00ff8844;
+    }
+
+    .subtitle {
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    .display-container {
+      position: relative;
+      border: 4px solid #333;
+      border-radius: 20px;
+      padding: 20px;
+      background: #0a0a0a;
+      box-shadow:
+        inset 0 0 50px rgba(0,0,0,0.5),
+        0 0 20px rgba(0,255,136,0.1);
+    }
+
+    #display {
+      display: block;
+      border-radius: 10px;
+      image-rendering: pixelated;
+    }
+
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .control-group {
+      background: #252525;
+      padding: 15px;
+      border-radius: 8px;
+      min-width: 200px;
+    }
+
+    .control-group h3 {
+      color: #00ff88;
+      margin-bottom: 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .control {
+      margin: 8px 0;
+    }
+
+    .control label {
+      display: block;
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .control input[type="range"] {
+      width: 100%;
+      accent-color: #00ff88;
+    }
+
+    .control select {
+      width: 100%;
+      padding: 5px;
+      background: #333;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+
+    .stats {
+      margin-top: 20px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    button {
+      background: #00ff88;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: bold;
+      margin: 5px;
+    }
+
+    button:hover {
+      background: #00cc6e;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .button-group {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Analog Video Synthesizer</h1>
+  <p class="subtitle">Digital emulation of classic analog video synthesis</p>
+
+  <div class="display-container">
+    <canvas id="display" width="720" height="480"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <h3>Pattern</h3>
+      <div class="control">
+        <label>Preset</label>
+        <select id="preset">
+          <option value="test">Test Pattern</option>
+          <option value="ruttEtra">Rutt/Etra</option>
+          <option value="feedback">Video Feedback</option>
+          <option value="colorBars">Color Bars</option>
+          <option value="oscillator">Oscillator</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Speed: <span id="speedValue">1.0</span></label>
+        <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>CRT Effects</h3>
+      <div class="control">
+        <label>Scanlines: <span id="scanlinesValue">0.3</span></label>
+        <input type="range" id="scanlines" min="0" max="1" step="0.05" value="0.3">
+      </div>
+      <div class="control">
+        <label>Bloom: <span id="bloomValue">0.3</span></label>
+        <input type="range" id="bloom" min="0" max="1" step="0.05" value="0.3">
+      </div>
+      <div class="control">
+        <label>Curvature: <span id="curvatureValue">0.1</span></label>
+        <input type="range" id="curvature" min="0" max="0.3" step="0.01" value="0.1">
+      </div>
+      <div class="control">
+        <label>Persistence: <span id="persistenceValue">1.0</span></label>
+        <input type="range" id="persistence" min="0" max="3" step="0.1" value="1">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Color</h3>
+      <div class="control">
+        <label>Hue Shift: <span id="hueValue">0.0</span></label>
+        <input type="range" id="hue" min="0" max="1" step="0.01" value="0">
+      </div>
+      <div class="control">
+        <label>Saturation: <span id="saturationValue">1.0</span></label>
+        <input type="range" id="saturation" min="0" max="2" step="0.05" value="1">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Actions</h3>
+      <div class="button-group">
+        <button id="reset">Reset</button>
+        <button id="pause">Pause</button>
+        <button id="fullscreen">Fullscreen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <span id="fps">FPS: --</span> |
+    <span id="frame">Frame: 0</span>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

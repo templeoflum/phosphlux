@@ -1,0 +1,44 @@
+{
+  "name": "analog-video-synth",
+  "version": "0.1.0",
+  "description": "Faithful digital emulation of analog video synthesis - from oscilloscope art to CRT displays",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "dev": "vite",
+    "preview": "vite preview",
+    "capture": "tsx scripts/visual-capture.ts"
+  },
+  "keywords": [
+    "video-synthesis",
+    "analog-emulation",
+    "crt",
+    "rutt-etra",
+    "paik-abe",
+    "sandin",
+    "lzx",
+    "webgl",
+    "signal-processing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

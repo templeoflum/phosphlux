@@ -1,0 +1,41 @@
+# Rust
+/target
+**/*.rs.bk
+# Note: Cargo.lock is tracked for reproducible builds (this is a binary, not a library)
+
+# Dependencies (TypeScript archive)
+node_modules/
+
+# Build outputs
+dist/
+dist-demo/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Generated files
+*.ppm
+*.png
+*.jpg
