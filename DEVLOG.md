@@ -2,7 +2,7 @@
 
 *phosphor + flux — flowing light substance*
 
-A chronicle of building a real-time GPU-accelerated analog video synthesizer emulation.
+A chronicle of building a real-time GPU analog video synthesizer and CRT emulation.
 
 ---
 

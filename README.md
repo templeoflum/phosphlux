@@ -2,7 +2,7 @@
 
 *phosphor + flux — flowing light substance*
 
-A real-time GPU-accelerated emulation of classic analog video synthesis hardware, built in Rust with wgpu.
+Real-time GPU analog video synthesizer and CRT emulation, built in Rust with wgpu.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)
@@ -58,7 +58,7 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/phosphlux.git
+git clone https://github.com/templeoflum/phosphlux.git
 cd phosphlux
 
 # Build and run
