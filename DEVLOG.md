@@ -501,4 +501,49 @@ Previous architecture had global feedback and CRT parameters that applied unifor
 
 ---
 
+## Phase 8: Research Orchestration Infrastructure
+
+### Historical Emulation Philosophy
+**"Follow the inventors, not the interpreters."**
+
+Rather than implementing effects based on secondhand descriptions, we trace the actual historical evolution of video art hardware. This provides:
+- Authentic behavior including "happy accidents"
+- Deep first-hand understanding
+- Complete palette of each device's capabilities
+- Historical continuity
+
+### Research Agent Architecture
+
+Created `tools/research-orchestrator/` — an MCP server that exposes Ollama models as tools for Claude CLI:
+
+| Tool | Model | Purpose |
+|------|-------|---------|
+| `research_query` | qwen3 | Deep research on video synthesis topics |
+| `analyze_schematic` | minicpm-v | Vision-based schematic analysis |
+| `generate_shader` | qwen2.5-coder | WGSL shader generation |
+| `verify_emulation` | deepseek-r1 | Accuracy verification |
+| `embed_document` | nomic-embed-text | Build searchable knowledge base |
+
+### Research Directory Structure
+```
+research/
+├── schematics/     # Schematic images
+├── datasheets/     # Component datasheets
+├── patents/        # Patent PDFs
+├── manuals/        # Service manuals
+└── notes/          # Research notes
+```
+
+### Priority Devices (from HISTORICAL_EMULATION_PLAN.md)
+1. **CRITICAL**: Paik/Abe, Sandin IP, Rutt/Etra, LZX Visionary, Sony PVM
+2. **HIGH**: Oscilloscope Art, Beck DVS, Jones Colorizer, LZX Cadet, Edirol V4
+
+### Next Steps
+1. Install MCP server dependencies: `pip install -r tools/research-orchestrator/requirements.txt`
+2. Add MCP config to Claude CLI
+3. Begin systematic research on Paik/Abe synthesizer
+4. Collect schematics from LZX Industries GitHub
+
+---
+
 *Last updated: January 2026*
