@@ -12,5 +12,3 @@ pub mod patch;
 pub mod node_editor;
 
 pub use controls::ControlPanel;
-pub use patch::{SignalNode, SignalPatch, NodeType};
-pub use node_editor::{NodeEditor, AspectRatio};

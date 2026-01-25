@@ -23,6 +23,11 @@ pub enum NodeType {
     ShapeDiamond,
     FeedbackIn,
 
+    // Channel Inputs (read from specific channels)
+    ChannelKeyIn,   // Read from Key channel
+    ChannelAux1In,  // Read from Aux1 channel
+    ChannelAux2In,  // Read from Aux2 channel
+
     // Processors (inputs and outputs)
     Folder,
     Quantizer,
@@ -43,6 +48,11 @@ pub enum NodeType {
     // Destinations (inputs only)
     MainOut,
     FeedbackOut,
+
+    // Channel Outputs (write to specific channels)
+    ChannelKeyOut,  // Write to Key channel
+    ChannelAux1Out, // Write to Aux1 channel
+    ChannelAux2Out, // Write to Aux2 channel
 }
 
 impl NodeType {
@@ -53,6 +63,8 @@ impl NodeType {
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
             NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
             NodeType::FeedbackIn => "Sources",
+
+            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In => "Channels",
 
             NodeType::Folder | NodeType::Quantizer | NodeType::SoftClip |
             NodeType::Solarize | NodeType::Inverter => "Waveshapers",
@@ -65,7 +77,8 @@ impl NodeType {
             NodeType::ColorSpectrum | NodeType::ColorThreshold |
             NodeType::ColorGradient => "Colorizers",
 
-            NodeType::MainOut | NodeType::FeedbackOut => "Outputs",
+            NodeType::MainOut | NodeType::FeedbackOut |
+            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out => "Outputs",
         }
     }
 
@@ -75,22 +88,27 @@ impl NodeType {
             NodeType::OscillatorH | NodeType::OscillatorV |
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
             NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
-            NodeType::FeedbackIn
+            NodeType::FeedbackIn |
+            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In
         )
     }
 
     pub fn has_outputs(&self) -> bool {
-        !matches!(self, NodeType::MainOut | NodeType::FeedbackOut)
+        !matches!(self,
+            NodeType::MainOut | NodeType::FeedbackOut |
+            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out
+        )
     }
 
     pub fn input_count(&self) -> usize {
         match self {
-            // Sources have no inputs
+            // Sources have no inputs (including channel inputs)
             NodeType::RampH | NodeType::RampV | NodeType::RampRadial |
             NodeType::OscillatorH | NodeType::OscillatorV |
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
             NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
-            NodeType::FeedbackIn => 0,
+            NodeType::FeedbackIn |
+            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In => 0,
 
             // Single input processors
             NodeType::Folder | NodeType::Quantizer | NodeType::SoftClip |
@@ -103,8 +121,9 @@ impl NodeType {
             // Three-input (A, B, key)
             NodeType::ChromaKey => 3,
 
-            // Outputs
-            NodeType::MainOut | NodeType::FeedbackOut => 1,
+            // Outputs (including channel outputs)
+            NodeType::MainOut | NodeType::FeedbackOut |
+            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out => 1,
         }
     }
 
@@ -122,6 +141,9 @@ impl NodeType {
             NodeType::ShapeRect => "Rectangle",
             NodeType::ShapeDiamond => "Diamond",
             NodeType::FeedbackIn => "Feedback In",
+            NodeType::ChannelKeyIn => "Key In",
+            NodeType::ChannelAux1In => "Aux1 In",
+            NodeType::ChannelAux2In => "Aux2 In",
             NodeType::Folder => "Folder",
             NodeType::Quantizer => "Quantizer",
             NodeType::SoftClip => "Soft Clip",
@@ -137,6 +159,9 @@ impl NodeType {
             NodeType::ColorGradient => "Gradient",
             NodeType::MainOut => "Main Out",
             NodeType::FeedbackOut => "Feedback Out",
+            NodeType::ChannelKeyOut => "Key Out",
+            NodeType::ChannelAux1Out => "Aux1 Out",
+            NodeType::ChannelAux2Out => "Aux2 Out",
         }
     }
 }

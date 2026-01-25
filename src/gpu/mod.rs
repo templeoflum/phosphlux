@@ -5,3 +5,4 @@
 
 pub mod renderer;
 pub mod graph_compiler;
+pub mod channels;

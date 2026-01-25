@@ -10,7 +10,7 @@ use winit::window::Window;
 use winit::dpi::PhysicalSize;
 
 use crate::core::timing::TimingUniforms;
-use crate::gpu::graph_compiler::{CompiledGraph, CompiledGraphHeader, GraphOp, MAX_OPS};
+use crate::gpu::graph_compiler::CompiledGraph;
 use crate::ui::patch::SignalPatch;
 
 /// Vertex for fullscreen quad
@@ -67,68 +67,28 @@ impl Default for FeedbackUniforms {
     }
 }
 
-/// Synthesis parameters passed to GPU (must be 64 bytes for alignment)
+/// CRT emulation parameters passed to GPU (16 bytes)
+/// Signal generation is now handled by the node graph
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SynthUniforms {
-    // Oscillators (8 floats = 32 bytes)
-    pub osc1_freq: f32,
-    pub osc1_phase: f32,
-    pub osc2_freq: f32,
-    pub osc2_phase: f32,
-    pub noise_mix: f32,
-    pub noise_type: f32,  // 0=white, 1=pink, 2=brown
-    pub _pad0: f32,
-    pub _pad1: f32,
-
-    // Keyer (8 floats = 32 bytes)
-    pub key_enabled: f32,  // 0 or 1
-    pub key_clip_black: f32,
-    pub key_clip_white: f32,
-    pub key_invert: f32,  // 0 or 1
-    pub rutt_etra_enabled: f32,  // 0 or 1
-    pub rutt_etra_amount: f32,
-    pub colorizer_type: f32,  // 0=spectrum, 1=threshold, 2=grayscale
-    pub colorizer_levels: f32,
-
-    // CRT + Shape (8 floats = 32 bytes)
+    /// CRT scanline intensity
     pub scanline_intensity: f32,
+    /// CRT screen curvature (barrel distortion)
     pub curvature: f32,
+    /// CRT vignette darkening at edges
     pub vignette_amount: f32,
-    pub shape_type: f32,  // 0=none, 1=circle, 2=rect, 3=diamond, etc.
-    pub shape_size: f32,
-    pub shape_softness: f32,
-    pub _pad2: f32,
-    pub _pad3: f32,
+    /// Padding for alignment
+    pub _pad0: f32,
 }
 
 impl Default for SynthUniforms {
     fn default() -> Self {
         Self {
-            osc1_freq: 4.0,
-            osc1_phase: 0.0,
-            osc2_freq: 3.0,
-            osc2_phase: 0.0,
-            noise_mix: 0.1,
-            noise_type: 1.0,  // Pink
-            _pad0: 0.0,
-            _pad1: 0.0,
-            key_enabled: 0.0,
-            key_clip_black: 0.2,
-            key_clip_white: 0.8,
-            key_invert: 0.0,
-            rutt_etra_enabled: 1.0,
-            rutt_etra_amount: 0.15,
-            colorizer_type: 0.0,  // Spectrum
-            colorizer_levels: 8.0,
             scanline_intensity: 0.12,
             curvature: 0.1,
             vignette_amount: 0.4,
-            shape_type: 1.0,  // Circle
-            shape_size: 0.3,
-            shape_softness: 0.05,
-            _pad2: 0.0,
-            _pad3: 0.0,
+            _pad0: 0.0,
         }
     }
 }

@@ -24,9 +24,9 @@ use winit::{
 use std::sync::Arc;
 
 use crate::core::timing::{SyncGenerator, VideoStandard};
-use crate::gpu::renderer::{Renderer, SynthUniforms};
+use crate::gpu::renderer::Renderer;
 use crate::ui::ControlPanel;
-use crate::ui::controls::{SynthParams, NoiseType, ColorizerType, ShapeType};
+use crate::ui::controls::SynthParams;
 use crate::ui::patch::SignalPatch;
 use crate::ui::node_editor::{NodeEditor, AspectRatio, render_node_canvas, render_node_palette, render_inspector};
 
@@ -134,10 +134,12 @@ impl ApplicationHandler for App {
                 self.sync_gen.tick();
                 self.frame_count += 1;
 
-                // Sync UI params to renderer
+                // Sync global params to renderer (CRT effects + feedback)
                 if let Some(renderer) = &mut self.renderer {
                     renderer.feedback = self.control_panel.params.feedback;
-                    sync_synth_params(&self.control_panel.params, &mut renderer.synth);
+                    renderer.synth.scanline_intensity = self.control_panel.params.scanline_intensity;
+                    renderer.synth.curvature = self.control_panel.params.curvature;
+                    renderer.synth.vignette_amount = self.control_panel.params.vignette_amount;
                 }
 
                 // Render frame
@@ -166,38 +168,8 @@ impl ApplicationHandler for App {
                         event_loop.exit();
                     }
                     KeyCode::Space => {
-                        self.control_panel.params = ui::controls::SynthParams::default();
+                        self.control_panel.params = SynthParams::default();
                         log::info!("Reset to defaults");
-                    }
-                    KeyCode::Digit1 => {
-                        self.control_panel.params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                            mix: 0.85, zoom: 0.98, rotation: 0.015, hue_shift: 0.003,
-                            offset_x: 0.0, offset_y: 0.0, saturation: 1.0, decay: 0.99,
-                        };
-                    }
-                    KeyCode::Digit2 => {
-                        self.control_panel.params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                            mix: 0.9, zoom: 0.95, rotation: 0.0, hue_shift: 0.005,
-                            offset_x: 0.0, offset_y: 0.0, saturation: 1.2, decay: 0.98,
-                        };
-                    }
-                    KeyCode::Digit3 => {
-                        self.control_panel.params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                            mix: 0.92, zoom: 0.97, rotation: 0.02, hue_shift: 0.01,
-                            offset_x: 0.003, offset_y: 0.002, saturation: 1.3, decay: 0.995,
-                        };
-                    }
-                    KeyCode::Digit4 => {
-                        self.control_panel.params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                            mix: 0.8, zoom: 0.995, rotation: 0.002, hue_shift: 0.001,
-                            offset_x: 0.001, offset_y: 0.0, saturation: 0.9, decay: 0.97,
-                        };
-                    }
-                    KeyCode::Digit5 => {
-                        self.control_panel.params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                            mix: 0.88, zoom: 0.99, rotation: 0.025, hue_shift: 0.008,
-                            offset_x: 0.0, offset_y: 0.0, saturation: 1.5, decay: 0.99,
-                        };
                     }
                     _ => {}
                 }
@@ -346,59 +318,26 @@ fn render_node_editor_layout(
                 }
             });
             ui.menu_button("Edit", |ui| {
-                if ui.button("Reset Parameters").clicked() {
+                if ui.button("Reset CRT Effects").clicked() {
                     *control_panel_params = SynthParams::default();
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Presets", |ui| {
-                if ui.button("Spiral").clicked() {
-                    control_panel_params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                        mix: 0.85, zoom: 0.98, rotation: 0.015, hue_shift: 0.003,
-                        offset_x: 0.0, offset_y: 0.0, saturation: 1.0, decay: 0.99,
-                    };
-                    ui.close_menu();
-                }
-                if ui.button("Tunnel").clicked() {
-                    control_panel_params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                        mix: 0.9, zoom: 0.95, rotation: 0.0, hue_shift: 0.005,
-                        offset_x: 0.0, offset_y: 0.0, saturation: 1.2, decay: 0.98,
-                    };
-                    ui.close_menu();
-                }
-                if ui.button("Chaos").clicked() {
-                    control_panel_params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                        mix: 0.92, zoom: 0.97, rotation: 0.02, hue_shift: 0.01,
-                        offset_x: 0.003, offset_y: 0.002, saturation: 1.3, decay: 0.995,
-                    };
-                    ui.close_menu();
-                }
-                if ui.button("Drift").clicked() {
-                    control_panel_params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                        mix: 0.8, zoom: 0.995, rotation: 0.002, hue_shift: 0.001,
-                        offset_x: 0.001, offset_y: 0.0, saturation: 0.9, decay: 0.97,
-                    };
-                    ui.close_menu();
-                }
-                if ui.button("Kaleidoscope").clicked() {
-                    control_panel_params.feedback = crate::gpu::renderer::FeedbackUniforms {
-                        mix: 0.88, zoom: 0.99, rotation: 0.025, hue_shift: 0.008,
-                        offset_x: 0.0, offset_y: 0.0, saturation: 1.5, decay: 0.99,
-                    };
-                    ui.close_menu();
-                }
-            });
             ui.menu_button("Help", |ui| {
-                ui.label("Space - Reset params");
-                ui.label("1-5 - Quick presets");
-                ui.label("Esc - Exit");
+                ui.label("Keyboard:");
+                ui.label("  Space - Reset CRT effects");
+                ui.label("  Esc - Exit");
                 ui.separator();
                 ui.label("Node Editor:");
                 ui.label("  Drag nodes to move");
-                ui.label("  Drag from output to input to connect");
-                ui.label("  Right-click node to delete");
-                ui.label("  Middle-drag or Alt+drag to pan");
+                ui.label("  Drag output → input to connect");
+                ui.label("  Drag input to unplug");
+                ui.label("  Right-click to delete");
+                ui.label("  Middle-drag to pan");
                 ui.label("  Scroll to zoom");
+                ui.label("  Del - Delete selected");
+                ui.label("  F - Frame selected");
+                ui.label("  Home - Reset view");
             });
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -476,9 +415,9 @@ fn render_node_editor_layout(
 
                 ui.separator();
 
-                // Also show global parameters here
-                ui.collapsing("Global Parameters", |ui| {
-                    render_parameters_compact(ui, control_panel_params);
+                // Global effects (CRT + Feedback)
+                ui.collapsing("Global Effects", |ui| {
+                    render_global_effects(ui, control_panel_params);
                 });
             });
         });
@@ -494,8 +433,8 @@ fn render_node_editor_layout(
     graph_changed || node_editor.graph_modified
 }
 
-/// Compact parameter view for the inspector panel
-fn render_parameters_compact(ui: &mut egui::Ui, params: &mut SynthParams) {
+/// Global effects panel (CRT + Feedback)
+fn render_global_effects(ui: &mut egui::Ui, params: &mut SynthParams) {
     ui.collapsing("Feedback", |ui| {
         let fb = &mut params.feedback;
         ui.add(egui::Slider::new(&mut fb.mix, 0.0..=0.99).text("Mix"));
@@ -503,93 +442,20 @@ fn render_parameters_compact(ui: &mut egui::Ui, params: &mut SynthParams) {
         ui.add(egui::Slider::new(&mut fb.rotation, -0.1..=0.1).text("Rotation"));
         ui.add(egui::Slider::new(&mut fb.hue_shift, -0.05..=0.05).text("Hue"));
         ui.add(egui::Slider::new(&mut fb.decay, 0.9..=1.0).text("Decay"));
+        ui.add(egui::Slider::new(&mut fb.saturation, 0.0..=2.0).text("Saturation"));
+        ui.horizontal(|ui| {
+            ui.add(egui::Slider::new(&mut fb.offset_x, -0.1..=0.1).text("X"));
+        });
+        ui.horizontal(|ui| {
+            ui.add(egui::Slider::new(&mut fb.offset_y, -0.1..=0.1).text("Y"));
+        });
     });
 
-    ui.collapsing("Luma Key", |ui| {
-        ui.checkbox(&mut params.key_enabled, "Enable");
-        if params.key_enabled {
-            ui.add(egui::Slider::new(&mut params.key_clip_black, 0.0..=1.0).text("Black"));
-            ui.add(egui::Slider::new(&mut params.key_clip_white, 0.0..=1.0).text("White"));
-        }
+    ui.collapsing("CRT Effects", |ui| {
+        ui.add(egui::Slider::new(&mut params.scanline_intensity, 0.0..=0.5).text("Scanlines"));
+        ui.add(egui::Slider::new(&mut params.curvature, 0.0..=0.3).text("Curvature"));
+        ui.add(egui::Slider::new(&mut params.vignette_amount, 0.0..=1.0).text("Vignette"));
     });
-
-    ui.collapsing("Shapes", |ui| {
-        egui::ComboBox::from_label("Type")
-            .selected_text(format!("{:?}", params.shape_type))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut params.shape_type, ShapeType::None, "None");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Circle, "Circle");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Rectangle, "Rect");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Diamond, "Diamond");
-                ui.selectable_value(&mut params.shape_type, ShapeType::Star, "Star");
-            });
-        if params.shape_type != ShapeType::None {
-            ui.add(egui::Slider::new(&mut params.shape_size, 0.05..=0.8).text("Size"));
-        }
-    });
-
-    ui.collapsing("Colorizer", |ui| {
-        egui::ComboBox::from_label("Mode")
-            .selected_text(format!("{:?}", params.colorizer_type))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut params.colorizer_type, ColorizerType::Spectrum, "Spectrum");
-                ui.selectable_value(&mut params.colorizer_type, ColorizerType::Threshold, "Threshold");
-                ui.selectable_value(&mut params.colorizer_type, ColorizerType::Grayscale, "Gray");
-            });
-    });
-}
-
-/// Sync UI SynthParams to GPU SynthUniforms
-fn sync_synth_params(params: &SynthParams, synth: &mut SynthUniforms) {
-    // Oscillators
-    synth.osc1_freq = params.osc1_freq;
-    synth.osc1_phase = params.osc1_phase;
-    synth.osc2_freq = params.osc2_freq;
-    synth.osc2_phase = params.osc2_phase;
-
-    // Noise
-    synth.noise_mix = params.noise_mix;
-    synth.noise_type = match params.noise_type {
-        NoiseType::White => 0.0,
-        NoiseType::Pink => 1.0,
-        NoiseType::Brown => 2.0,
-    };
-
-    // Keyer
-    synth.key_enabled = if params.key_enabled { 1.0 } else { 0.0 };
-    synth.key_clip_black = params.key_clip_black;
-    synth.key_clip_white = params.key_clip_white;
-    synth.key_invert = if params.key_invert { 1.0 } else { 0.0 };
-
-    // Luminance Displacement (renamed from Rutt/Etra)
-    synth.rutt_etra_enabled = if params.rutt_etra_enabled { 1.0 } else { 0.0 };
-    synth.rutt_etra_amount = params.rutt_etra_amount;
-
-    // Colorizer
-    synth.colorizer_type = match params.colorizer_type {
-        ColorizerType::Spectrum => 0.0,
-        ColorizerType::Threshold => 1.0,
-        ColorizerType::Grayscale => 2.0,
-    };
-    synth.colorizer_levels = params.colorizer_levels;
-
-    // CRT
-    synth.scanline_intensity = params.scanline_intensity;
-    synth.curvature = params.curvature;
-    synth.vignette_amount = params.vignette_amount;
-
-    // Shape
-    synth.shape_type = match params.shape_type {
-        ShapeType::None => 0.0,
-        ShapeType::Circle => 1.0,
-        ShapeType::Rectangle => 2.0,
-        ShapeType::Diamond => 3.0,
-        ShapeType::Star => 4.0,
-        ShapeType::Bars => 5.0,
-        ShapeType::Checker => 6.0,
-    };
-    synth.shape_size = params.shape_size;
-    synth.shape_softness = params.shape_softness;
 }
 
 fn main() {

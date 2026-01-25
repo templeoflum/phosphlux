@@ -3,7 +3,7 @@
 //! Compiles the SignalPatch node graph into GPU-executable operations.
 //! The shader interprets these operations at runtime to evaluate the graph.
 
-use crate::ui::patch::{SignalPatch, NodeType, Connection};
+use crate::ui::patch::{SignalPatch, NodeType};
 use std::collections::HashMap;
 
 /// Maximum number of operations the GPU can execute per frame (reduced for performance)
@@ -30,6 +30,11 @@ pub enum OpCode {
     ShapeDiamond = 10,
     FeedbackIn = 11,
 
+    // Channel inputs (read from specific channels)
+    ChannelKeyIn = 12,
+    ChannelAux1In = 13,
+    ChannelAux2In = 14,
+
     // Single-input processors
     Folder = 20,
     Quantizer = 21,
@@ -53,6 +58,11 @@ pub enum OpCode {
     MainOut = 50,
     FeedbackOut = 51,
 
+    // Channel outputs (write to specific channels)
+    ChannelKeyOut = 52,
+    ChannelAux1Out = 53,
+    ChannelAux2Out = 54,
+
     // No-op (empty slot)
     Nop = 255,
 }
@@ -72,6 +82,9 @@ impl OpCode {
             NodeType::ShapeRect => OpCode::ShapeRect,
             NodeType::ShapeDiamond => OpCode::ShapeDiamond,
             NodeType::FeedbackIn => OpCode::FeedbackIn,
+            NodeType::ChannelKeyIn => OpCode::ChannelKeyIn,
+            NodeType::ChannelAux1In => OpCode::ChannelAux1In,
+            NodeType::ChannelAux2In => OpCode::ChannelAux2In,
             NodeType::Folder => OpCode::Folder,
             NodeType::Quantizer => OpCode::Quantizer,
             NodeType::SoftClip => OpCode::SoftClip,
@@ -87,6 +100,9 @@ impl OpCode {
             NodeType::ChromaKey => OpCode::ChromaKey,
             NodeType::MainOut => OpCode::MainOut,
             NodeType::FeedbackOut => OpCode::FeedbackOut,
+            NodeType::ChannelKeyOut => OpCode::ChannelKeyOut,
+            NodeType::ChannelAux1Out => OpCode::ChannelAux1Out,
+            NodeType::ChannelAux2Out => OpCode::ChannelAux2Out,
         }
     }
 }

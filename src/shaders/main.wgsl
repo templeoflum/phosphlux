@@ -37,37 +37,13 @@ struct Feedback {
     decay: f32,
 }
 
-// Synthesis parameters (96 bytes = 24 floats)
+// CRT emulation parameters (16 bytes)
+// Signal generation is now handled by the node graph
 struct Synth {
-    // Oscillators
-    osc1_freq: f32,
-    osc1_phase: f32,
-    osc2_freq: f32,
-    osc2_phase: f32,
-    noise_mix: f32,
-    noise_type: f32,  // 0=white, 1=pink, 2=brown
-    _pad0: f32,
-    _pad1: f32,
-
-    // Keyer
-    key_enabled: f32,
-    key_clip_black: f32,
-    key_clip_white: f32,
-    key_invert: f32,
-    rutt_etra_enabled: f32,
-    rutt_etra_amount: f32,
-    colorizer_type: f32,  // 0=spectrum, 1=threshold, 2=grayscale
-    colorizer_levels: f32,
-
-    // CRT + Shape
     scanline_intensity: f32,
     curvature: f32,
     vignette_amount: f32,
-    shape_type: f32,  // 0=none, 1=circle, 2=rect, 3=diamond
-    shape_size: f32,
-    shape_softness: f32,
-    _pad2: f32,
-    _pad3: f32,
+    _pad0: f32,
 }
 
 @group(0) @binding(0)
@@ -123,6 +99,9 @@ const OP_SHAPE_CIRCLE: u32 = 8u;
 const OP_SHAPE_RECT: u32 = 9u;
 const OP_SHAPE_DIAMOND: u32 = 10u;
 const OP_FEEDBACK_IN: u32 = 11u;
+const OP_CHANNEL_KEY_IN: u32 = 12u;
+const OP_CHANNEL_AUX1_IN: u32 = 13u;
+const OP_CHANNEL_AUX2_IN: u32 = 14u;
 const OP_FOLDER: u32 = 20u;
 const OP_QUANTIZER: u32 = 21u;
 const OP_SOFT_CLIP: u32 = 22u;
@@ -138,6 +117,9 @@ const OP_MULTIPLIER: u32 = 42u;
 const OP_CHROMA_KEY: u32 = 43u;
 const OP_MAIN_OUT: u32 = 50u;
 const OP_FEEDBACK_OUT: u32 = 51u;
+const OP_CHANNEL_KEY_OUT: u32 = 52u;
+const OP_CHANNEL_AUX1_OUT: u32 = 53u;
+const OP_CHANNEL_AUX2_OUT: u32 = 54u;
 const OP_NOP: u32 = 255u;
 
 // Graph bindings (group 2)
@@ -840,7 +822,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var uv = in.uv;
     let time = timing.time;
 
-    // Apply CRT screen curvature (from UI)
+    // Apply CRT screen curvature
     uv = crt_curve(uv, synth.curvature);
 
     // Check if we're outside the curved screen
@@ -848,128 +830,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    // ========== RUTT/ETRA Z-AXIS DISPLACEMENT ==========
-
-    var safe_uv = uv;
-    if synth.rutt_etra_enabled > 0.5 {
-        // Animate displacement slightly
-        let z_amount = synth.rutt_etra_amount * (1.0 + sin(time * 0.3) * 0.3);
-        let displaced_uv = rutt_etra_displacement(uv, z_amount);
-        safe_uv = clamp(displaced_uv, vec2<f32>(0.0), vec2<f32>(1.0));
-    }
-
-    var color: vec3<f32>;
-
     // ========== NODE GRAPH EVALUATION ==========
-    // Use node graph when available, otherwise fall back to legacy hardcoded path
-    if graph_header.op_count > 0u {
-        // Node graph path - evaluate the compiled graph
-        // Feedback is handled by FeedbackIn nodes within the graph itself,
-        // so we use the graph output directly (no redundant feedback sample)
-        let graph_result = evaluate_graph(safe_uv, time);
-        color = graph_result.rgb;
-    } else {
-        // Legacy hardcoded path (for backward compatibility)
+    // All signal generation and processing is handled by the node graph
+    let graph_result = evaluate_graph(uv, time);
+    var color = graph_result.rgb;
 
-        // ========== VIDEO FEEDBACK ==========
-        let fb_color = sample_feedback(safe_uv);
+    // ========== CRT EFFECTS ==========
+    // These are global post-processing effects applied after the node graph
 
-        // ========== SIGNAL GENERATION ==========
-
-        // Base signal from radial ramp
-        let radial = ramp_radial(safe_uv);
-
-        // Oscillators with UI-controlled parameters
-        let osc1 = osc_h(safe_uv, synth.osc1_freq, time * 0.5 + synth.osc1_phase);
-        let osc2 = osc_v(safe_uv, synth.osc2_freq, time * 0.3 + synth.osc2_phase);
-
-        // Noise based on selected type
-        var noise_val = 0.0;
-        if synth.noise_type < 0.5 {
-            noise_val = noise_white(safe_uv, time);
-        } else if synth.noise_type < 1.5 {
-            noise_val = noise_pink(safe_uv, time);
-        } else {
-            noise_val = noise_brown(safe_uv, time);
-        }
-
-        // Shape generation based on UI selection
-        let shape_center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
-        var shape_val = 1.0;
-        if synth.shape_type > 0.5 && synth.shape_type < 1.5 {
-            // Circle
-            shape_val = shape_circle_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
-        } else if synth.shape_type > 1.5 && synth.shape_type < 2.5 {
-            // Rectangle
-            shape_val = shape_rect_soft(safe_uv, shape_center, vec2<f32>(synth.shape_size), synth.shape_softness);
-        } else if synth.shape_type > 2.5 && synth.shape_type < 3.5 {
-            // Diamond
-            shape_val = shape_diamond_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
-        } else if synth.shape_type > 3.5 && synth.shape_type < 4.5 {
-            // Star
-            shape_val = f32(shape_star(safe_uv, shape_center, synth.shape_size, synth.shape_size * 0.4, 5.0));
-        } else if synth.shape_type > 4.5 && synth.shape_type < 5.5 {
-            // Bars
-            shape_val = shape_bars_h(safe_uv, 8.0, 0.5);
-        } else if synth.shape_type > 5.5 {
-            // Checker
-            shape_val = shape_checker(safe_uv, 8.0);
-        }
-
-        // Mix signals
-        var signal = radial;
-        signal = mix(signal, osc1, 0.3);
-        signal = mix(signal, osc2, 0.2);
-        signal = mix(signal, noise_val * 0.5 + 0.5, synth.noise_mix);
-        signal = signal * mix(0.8, 1.0, shape_val);
-
-        // ========== SIGNAL PROCESSING ==========
-
-        // Apply wave folding
-        let folded = fold(signal, 2.0 + sin(time * 0.7));
-
-        // Quantize with UI-controlled levels
-        let quantized = quantize(folded, synth.colorizer_levels);
-
-        // Mix processed signals
-        var processed = mix(folded, quantized, 0.5);
-
-        // ========== COLORIZATION ==========
-
-        var new_color: vec3<f32>;
-        if synth.colorizer_type < 0.5 {
-            // Spectrum
-            new_color = colorize_spectrum(processed);
-        } else if synth.colorizer_type < 1.5 {
-            // Threshold
-            new_color = colorize_threshold(processed, synth.colorizer_levels);
-        } else {
-            // Grayscale
-            new_color = vec3<f32>(processed);
-        }
-
-        // ========== LUMA KEY ==========
-
-        if synth.key_enabled > 0.5 {
-            var key = luma_key(new_color, synth.key_clip_black, synth.key_clip_white);
-            if synth.key_invert > 0.5 {
-                key = 1.0 - key;
-            }
-            // Use key to mix with feedback
-            new_color = key_mix(fb_color, new_color, key);
-        }
-
-        // ========== MIX WITH FEEDBACK ==========
-        color = mix(new_color, fb_color, feedback.mix);
-    }
-
-    // ========== CRT EFFECTS (applied to both paths) ==========
-
-    // Apply scanlines (from UI)
+    // Apply scanlines
     let scan = scanlines(uv, synth.scanline_intensity);
     color = color * scan;
 
-    // Apply vignette (from UI)
+    // Apply vignette
     let vig = vignette(uv, synth.vignette_amount);
     color = color * vig;
 

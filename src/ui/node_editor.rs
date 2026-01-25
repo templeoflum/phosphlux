@@ -4,7 +4,7 @@
 //! Inspired by Blender's shader editor, Nuke, and TouchDesigner.
 
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
-use super::patch::{SignalPatch, SignalNode, NodeType, Connection};
+use super::patch::{SignalPatch, SignalNode, NodeType};
 
 /// Aspect ratio options for preview
 #[derive(Clone, Copy, Debug, PartialEq)]
