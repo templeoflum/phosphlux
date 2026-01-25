@@ -51,6 +51,67 @@ When developing visual systems (shaders, UI, graphics), the typical AI-assisted 
 
 ## Infrastructure Required
 
+### 0. Tiered Agent Architecture (Token Efficiency + Parallelism)
+
+The workflow leverages multiple AI tiers to optimize both token usage and execution speed:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Claude (Orchestrator)                                       │
+│  - High-level reasoning and decision making                  │
+│  - Reviews outputs from local agents                         │
+│  - Makes implementation decisions                            │
+│  - Views screenshots and evaluates results                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ Dispatches parallel tasks
+        ┌──────────────┼──────────────────┐
+        ▼              ▼                  ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ Fast Tier    │ │ Deep Tier    │ │ Vision Tier  │
+│ (phi4-mini)  │ │ (llama3.1)   │ │ (moondream)  │
+│ ~3-5s        │ │ ~10-30s      │ │ ~5-10s       │
+│              │ │              │ │              │
+│ Quick facts  │ │ Research     │ │ Image OCR    │
+│ Definitions  │ │ Code drafts  │ │ Schematics   │
+│ Conversions  │ │ Analysis     │ │ Extraction   │
+└──────────────┘ └──────────────┘ └──────────────┘
+        │              │                  │
+        └──────────────┴──────────────────┘
+                       │
+                       ▼
+              ┌──────────────┐
+              │ Embed Tier   │
+              │ (qwen3)      │
+              │ ~0.1s warm   │
+              │              │
+              │ Knowledge    │
+              │ base search  │
+              └──────────────┘
+```
+
+**Token Efficiency:**
+- Claude tokens are expensive; local model tokens are free
+- Offload routine tasks (research, drafts, extraction) to local models
+- Claude reviews and decides; doesn't do grunt work
+
+**Parallel Execution:**
+- Multiple research queries can run simultaneously
+- Vision extraction while research runs
+- Embedding happens in background
+- Claude continues working while agents complete
+
+**Example: Researching a New Device**
+```
+Claude dispatches IN PARALLEL:
+  - research_query("Sandin IP differencing amp", focus="components")
+  - research_query("Sandin IP", focus="behavior")
+  - extract_from_image("sandin_schematic.png", "components")
+  - quick_query("What is a differencing amplifier?")
+
+All 4 run simultaneously (~10s total, not ~40s sequential)
+Claude reviews all results, synthesizes, implements
+```
+
 ### 1. Workbench Application
 A lightweight rendering environment with:
 - GPU-accelerated rendering (wgpu)
