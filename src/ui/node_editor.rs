@@ -440,7 +440,7 @@ fn handle_canvas_input(
         if delete_pressed {
             if let Some(node_id) = editor.selected_node {
                 if let Some(node) = patch.get_node(node_id) {
-                    if node.node_type != NodeType::MainOut && node.node_type != NodeType::FeedbackOut {
+                    if node.node_type != NodeType::MainOut {
                         patch.remove_node(node_id);
                         editor.selected_node = None;
                         editor.graph_modified = true;
@@ -633,8 +633,8 @@ fn handle_canvas_input(
             for node in &patch.nodes {
                 let rect = editor.node_rect(node, canvas_rect);
                 if rect.contains(pos) {
-                    // Don't delete main outputs
-                    if node.node_type != NodeType::MainOut && node.node_type != NodeType::FeedbackOut {
+                    // Don't delete main output
+                    if node.node_type != NodeType::MainOut {
                         let id_to_remove = node.id;
                         patch.remove_node(id_to_remove);
                         editor.graph_modified = true;
@@ -833,18 +833,25 @@ pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &m
 
 /// Get all node types for a category
 fn get_node_types_for_category(category: &str) -> Vec<NodeType> {
-    let all_types = [
+    let all_types: Vec<NodeType> = vec![
+        // Sources
         NodeType::RampH, NodeType::RampV, NodeType::RampRadial,
         NodeType::OscillatorH, NodeType::OscillatorV,
         NodeType::NoiseWhite, NodeType::NoisePink, NodeType::NoiseBrown,
         NodeType::ShapeCircle, NodeType::ShapeRect, NodeType::ShapeDiamond,
-        NodeType::FeedbackIn,
+        // Temporal (feedback from routing)
+        NodeType::FrameBuffer, NodeType::DelayLine,
+        // Processors
         NodeType::Folder, NodeType::Quantizer, NodeType::SoftClip,
         NodeType::Solarize, NodeType::Inverter,
         NodeType::LumaKey, NodeType::ChromaKey, NodeType::Mixer, NodeType::Multiplier,
         NodeType::HueShift,
+        // Colorizers
         NodeType::ColorSpectrum, NodeType::ColorThreshold, NodeType::ColorGradient,
-        NodeType::MainOut, NodeType::FeedbackOut,
+        // Displays
+        NodeType::Monitor, NodeType::CrtDisplay,
+        // Legacy output
+        NodeType::MainOut,
     ];
 
     all_types.iter()

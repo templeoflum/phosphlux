@@ -21,12 +21,10 @@ pub enum NodeType {
     ShapeCircle,
     ShapeRect,
     ShapeDiamond,
-    FeedbackIn,
 
-    // Channel Inputs (read from specific channels)
-    ChannelKeyIn,   // Read from Key channel
-    ChannelAux1In,  // Read from Aux1 channel
-    ChannelAux2In,  // Read from Aux2 channel
+    // Temporal nodes (feedback from routing topology)
+    FrameBuffer,    // Stores current input, outputs previous frame (enables feedback loops)
+    DelayLine,      // Multi-frame delay buffer
 
     // Processors (inputs and outputs)
     Folder,
@@ -45,14 +43,12 @@ pub enum NodeType {
     ColorThreshold,
     ColorGradient,
 
-    // Destinations (inputs only)
-    MainOut,
-    FeedbackOut,
+    // Display nodes (render targets with their own textures)
+    Monitor,        // Clean preview display
+    CrtDisplay,     // Full CRT emulation with phosphor, scanlines, geometry
 
-    // Channel Outputs (write to specific channels)
-    ChannelKeyOut,  // Write to Key channel
-    ChannelAux1Out, // Write to Aux1 channel
-    ChannelAux2Out, // Write to Aux2 channel
+    // Legacy destinations (for backwards compatibility during transition)
+    MainOut,
 }
 
 impl NodeType {
@@ -61,10 +57,9 @@ impl NodeType {
             NodeType::RampH | NodeType::RampV | NodeType::RampRadial |
             NodeType::OscillatorH | NodeType::OscillatorV |
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
-            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
-            NodeType::FeedbackIn => "Sources",
+            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond => "Sources",
 
-            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In => "Channels",
+            NodeType::FrameBuffer | NodeType::DelayLine => "Temporal",
 
             NodeType::Folder | NodeType::Quantizer | NodeType::SoftClip |
             NodeType::Solarize | NodeType::Inverter => "Waveshapers",
@@ -77,8 +72,9 @@ impl NodeType {
             NodeType::ColorSpectrum | NodeType::ColorThreshold |
             NodeType::ColorGradient => "Colorizers",
 
-            NodeType::MainOut | NodeType::FeedbackOut |
-            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out => "Outputs",
+            NodeType::Monitor | NodeType::CrtDisplay => "Displays",
+
+            NodeType::MainOut => "Outputs",
         }
     }
 
@@ -87,33 +83,43 @@ impl NodeType {
             NodeType::RampH | NodeType::RampV | NodeType::RampRadial |
             NodeType::OscillatorH | NodeType::OscillatorV |
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
-            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
-            NodeType::FeedbackIn |
-            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In
+            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond
         )
     }
 
     pub fn has_outputs(&self) -> bool {
+        // Display nodes have no outputs (they ARE the output)
+        // MainOut is legacy and also has no outputs
         !matches!(self,
-            NodeType::MainOut | NodeType::FeedbackOut |
-            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out
+            NodeType::Monitor | NodeType::CrtDisplay | NodeType::MainOut
         )
+    }
+
+    /// Returns true if this node is a display/render target
+    pub fn is_display(&self) -> bool {
+        matches!(self, NodeType::Monitor | NodeType::CrtDisplay)
+    }
+
+    /// Returns true if this node introduces a frame delay (for cycle breaking)
+    pub fn is_temporal(&self) -> bool {
+        matches!(self, NodeType::FrameBuffer | NodeType::DelayLine)
     }
 
     pub fn input_count(&self) -> usize {
         match self {
-            // Sources have no inputs (including channel inputs)
+            // Sources have no inputs
             NodeType::RampH | NodeType::RampV | NodeType::RampRadial |
             NodeType::OscillatorH | NodeType::OscillatorV |
             NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
-            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond |
-            NodeType::FeedbackIn |
-            NodeType::ChannelKeyIn | NodeType::ChannelAux1In | NodeType::ChannelAux2In => 0,
+            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond => 0,
 
             // Single input processors
             NodeType::Folder | NodeType::Quantizer | NodeType::SoftClip |
             NodeType::Solarize | NodeType::Inverter | NodeType::HueShift |
             NodeType::ColorSpectrum | NodeType::ColorThreshold | NodeType::ColorGradient => 1,
+
+            // Temporal nodes (single input, single output)
+            NodeType::FrameBuffer | NodeType::DelayLine => 1,
 
             // Two-input processors
             NodeType::LumaKey | NodeType::Mixer | NodeType::Multiplier => 2,
@@ -121,9 +127,11 @@ impl NodeType {
             // Three-input (A, B, key)
             NodeType::ChromaKey => 3,
 
-            // Outputs (including channel outputs)
-            NodeType::MainOut | NodeType::FeedbackOut |
-            NodeType::ChannelKeyOut | NodeType::ChannelAux1Out | NodeType::ChannelAux2Out => 1,
+            // Display nodes (single input - the video signal to display)
+            NodeType::Monitor | NodeType::CrtDisplay => 1,
+
+            // Legacy output
+            NodeType::MainOut => 1,
         }
     }
 
@@ -140,10 +148,8 @@ impl NodeType {
             NodeType::ShapeCircle => "Circle",
             NodeType::ShapeRect => "Rectangle",
             NodeType::ShapeDiamond => "Diamond",
-            NodeType::FeedbackIn => "Feedback In",
-            NodeType::ChannelKeyIn => "Key In",
-            NodeType::ChannelAux1In => "Aux1 In",
-            NodeType::ChannelAux2In => "Aux2 In",
+            NodeType::FrameBuffer => "Frame Buffer",
+            NodeType::DelayLine => "Delay Line",
             NodeType::Folder => "Folder",
             NodeType::Quantizer => "Quantizer",
             NodeType::SoftClip => "Soft Clip",
@@ -157,11 +163,36 @@ impl NodeType {
             NodeType::ColorSpectrum => "Spectrum",
             NodeType::ColorThreshold => "Threshold",
             NodeType::ColorGradient => "Gradient",
+            NodeType::Monitor => "Monitor",
+            NodeType::CrtDisplay => "CRT Display",
             NodeType::MainOut => "Main Out",
-            NodeType::FeedbackOut => "Feedback Out",
-            NodeType::ChannelKeyOut => "Key Out",
-            NodeType::ChannelAux1Out => "Aux1 Out",
-            NodeType::ChannelAux2Out => "Aux2 Out",
+        }
+    }
+
+    /// Get input port names for this node type
+    pub fn input_names(&self) -> &'static [&'static str] {
+        match self {
+            // No inputs
+            NodeType::RampH | NodeType::RampV | NodeType::RampRadial |
+            NodeType::OscillatorH | NodeType::OscillatorV |
+            NodeType::NoiseWhite | NodeType::NoisePink | NodeType::NoiseBrown |
+            NodeType::ShapeCircle | NodeType::ShapeRect | NodeType::ShapeDiamond => &[],
+
+            // Single "In" input
+            NodeType::Folder | NodeType::Quantizer | NodeType::SoftClip |
+            NodeType::Solarize | NodeType::Inverter | NodeType::HueShift |
+            NodeType::ColorSpectrum | NodeType::ColorThreshold | NodeType::ColorGradient |
+            NodeType::FrameBuffer | NodeType::DelayLine |
+            NodeType::Monitor | NodeType::CrtDisplay | NodeType::MainOut => &["In"],
+
+            // Two inputs: A and B
+            NodeType::Mixer | NodeType::Multiplier => &["A", "B"],
+
+            // Luma key: Video and Key
+            NodeType::LumaKey => &["Video", "Key"],
+
+            // Chroma key: A, B, and Hue reference
+            NodeType::ChromaKey => &["A", "B", "Hue"],
         }
     }
 }
@@ -211,6 +242,39 @@ impl SignalNode {
                 params.insert("size".to_string(), 0.3);
                 params.insert("softness".to_string(), 0.05);
             }
+            // Frame Buffer - feedback parameters that were previously global
+            NodeType::FrameBuffer => {
+                params.insert("mix".to_string(), 0.5);        // How much of input vs previous frame
+                params.insert("zoom".to_string(), 1.0);       // Zoom per frame
+                params.insert("rotation".to_string(), 0.0);   // Rotation per frame (radians)
+                params.insert("hue_shift".to_string(), 0.0);  // Hue shift per frame
+                params.insert("decay".to_string(), 0.98);     // Brightness decay
+                params.insert("saturation".to_string(), 1.0); // Saturation multiplier
+                params.insert("offset_x".to_string(), 0.0);   // X translation
+                params.insert("offset_y".to_string(), 0.0);   // Y translation
+            }
+            // Delay Line
+            NodeType::DelayLine => {
+                params.insert("frames".to_string(), 4.0);     // Number of frames to delay
+            }
+            // CRT Display - all the CRT parameters
+            NodeType::CrtDisplay => {
+                params.insert("scanline_intensity".to_string(), 0.15);
+                params.insert("scanline_count".to_string(), 240.0);
+                params.insert("curvature".to_string(), 0.1);
+                params.insert("vignette".to_string(), 0.3);
+                params.insert("bloom".to_string(), 0.2);
+                params.insert("phosphor_type".to_string(), 0.0); // 0=RGB, 1=Green, 2=Amber
+                params.insert("convergence_x".to_string(), 0.0);
+                params.insert("convergence_y".to_string(), 0.0);
+                params.insert("brightness".to_string(), 1.0);
+                params.insert("contrast".to_string(), 1.0);
+            }
+            // Monitor - clean display, minimal params
+            NodeType::Monitor => {
+                params.insert("brightness".to_string(), 1.0);
+                params.insert("contrast".to_string(), 1.0);
+            }
             _ => {}
         }
 
@@ -245,32 +309,45 @@ impl SignalPatch {
         Self::default()
     }
 
-    /// Create a default patch with basic signal flow
+    /// Create a default patch with basic signal flow and feedback from routing
     pub fn default_patch() -> Self {
         let mut patch = Self::new();
 
-        // Add default nodes
+        // Sources
         let radial = patch.add_node(NodeType::RampRadial, 50.0, 100.0);
         let osc_h = patch.add_node(NodeType::OscillatorH, 50.0, 200.0);
         let osc_v = patch.add_node(NodeType::OscillatorV, 50.0, 300.0);
+
+        // Mix sources together
         let mixer1 = patch.add_node(NodeType::Mixer, 200.0, 150.0);
         let mixer2 = patch.add_node(NodeType::Mixer, 350.0, 200.0);
+
+        // Process
         let folder = patch.add_node(NodeType::Folder, 500.0, 200.0);
         let colorizer = patch.add_node(NodeType::ColorSpectrum, 650.0, 200.0);
-        let feedback = patch.add_node(NodeType::FeedbackIn, 650.0, 350.0);
-        let mixer3 = patch.add_node(NodeType::Mixer, 800.0, 250.0);
-        let main_out = patch.add_node(NodeType::MainOut, 950.0, 250.0);
 
-        // Connect nodes
+        // Feedback loop - Frame Buffer provides previous frame output
+        let frame_buffer = patch.add_node(NodeType::FrameBuffer, 650.0, 400.0);
+        let mixer3 = patch.add_node(NodeType::Mixer, 800.0, 250.0);
+
+        // Display output - CRT with full emulation
+        let crt = patch.add_node(NodeType::CrtDisplay, 950.0, 250.0);
+
+        // Connect the signal chain
         patch.connect(radial, 0, mixer1, 0);
         patch.connect(osc_h, 0, mixer1, 1);
         patch.connect(mixer1, 0, mixer2, 0);
         patch.connect(osc_v, 0, mixer2, 1);
         patch.connect(mixer2, 0, folder, 0);
         patch.connect(folder, 0, colorizer, 0);
+
+        // Mix colorized signal with feedback
         patch.connect(colorizer, 0, mixer3, 0);
-        patch.connect(feedback, 0, mixer3, 1);
-        patch.connect(mixer3, 0, main_out, 0);
+        patch.connect(frame_buffer, 0, mixer3, 1);  // Frame buffer output -> mixer B
+
+        // Route to display and back to frame buffer (creates the feedback loop!)
+        patch.connect(mixer3, 0, crt, 0);
+        patch.connect(mixer3, 0, frame_buffer, 0);  // Also feed into frame buffer for next frame
 
         patch
     }

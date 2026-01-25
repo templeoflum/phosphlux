@@ -69,9 +69,9 @@ var feedback_sampler: sampler;
 // Graph header - controls execution
 struct GraphHeader {
     op_count: u32,
+    frame_buffer_count: u32,
+    display_count: u32,
     main_out_slot: u32,
-    feedback_out_slot: u32,
-    _pad: u32,
 }
 
 // Single graph operation
@@ -98,10 +98,12 @@ const OP_NOISE_BROWN: u32 = 7u;
 const OP_SHAPE_CIRCLE: u32 = 8u;
 const OP_SHAPE_RECT: u32 = 9u;
 const OP_SHAPE_DIAMOND: u32 = 10u;
-const OP_FEEDBACK_IN: u32 = 11u;
-const OP_CHANNEL_KEY_IN: u32 = 12u;
-const OP_CHANNEL_AUX1_IN: u32 = 13u;
-const OP_CHANNEL_AUX2_IN: u32 = 14u;
+
+// Temporal nodes (read previous frame from frame buffer)
+const OP_FRAME_BUFFER_READ: u32 = 11u;
+const OP_DELAY_LINE_READ: u32 = 12u;
+
+// Processors
 const OP_FOLDER: u32 = 20u;
 const OP_QUANTIZER: u32 = 21u;
 const OP_SOFT_CLIP: u32 = 22u;
@@ -115,11 +117,18 @@ const OP_LUMA_KEY: u32 = 40u;
 const OP_MIXER: u32 = 41u;
 const OP_MULTIPLIER: u32 = 42u;
 const OP_CHROMA_KEY: u32 = 43u;
-const OP_MAIN_OUT: u32 = 50u;
-const OP_FEEDBACK_OUT: u32 = 51u;
-const OP_CHANNEL_KEY_OUT: u32 = 52u;
-const OP_CHANNEL_AUX1_OUT: u32 = 53u;
-const OP_CHANNEL_AUX2_OUT: u32 = 54u;
+
+// Frame buffer write (stores current frame for next iteration)
+const OP_FRAME_BUFFER_WRITE: u32 = 50u;
+const OP_DELAY_LINE_WRITE: u32 = 51u;
+
+// Display outputs (render targets with their own textures)
+const OP_DISPLAY_MONITOR: u32 = 60u;
+const OP_DISPLAY_CRT: u32 = 61u;
+
+// Legacy output (for transition)
+const OP_MAIN_OUT: u32 = 70u;
+
 const OP_NOP: u32 = 255u;
 
 // Graph bindings (group 2)
@@ -129,10 +138,10 @@ var<uniform> graph_header: GraphHeader;
 @group(2) @binding(1)
 var<storage, read> graph_ops: array<GraphOp>;
 
-// Signal slots for intermediate values (16 vec4 slots - reduced for performance)
+// Signal slots for intermediate values (32 vec4 slots)
 // Each slot stores RGBA where A is typically 1.0 for RGB signals
 // or the luminance is stored in R for grayscale signals
-var<private> slots: array<vec4<f32>, 16>;
+var<private> slots: array<vec4<f32>, 32>;
 
 // Vertex output
 struct VertexOutput {
@@ -666,13 +675,13 @@ fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
     let opcode = op.opcode;
     var result = vec4<f32>(0.0, 0.0, 0.0, 1.0);
 
-    // Get input values (clamped to 16 slots for performance)
+    // Get input values (clamped to 32 slots)
     var input_a = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     var input_b = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    if op.input_a < 16u {
+    if op.input_a < 32u {
         input_a = slots[op.input_a];
     }
-    if op.input_b < 16u {
+    if op.input_b < 32u {
         input_b = slots[op.input_b];
     }
 
@@ -710,8 +719,13 @@ fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
         let size = select(0.3, op.param0, op.param0 > 0.0);
         let soft = select(0.05, op.param1, op.param1 > 0.0);
         result = vec4<f32>(vec3<f32>(shape_diamond_soft(uv, center, size, soft)), 1.0);
-    } else if opcode == OP_FEEDBACK_IN {
-        // Sample feedback with transform
+    }
+    // Frame Buffer Read - reads previous frame from feedback texture
+    // input_a contains the frame buffer index (0-3)
+    // For now we only support one frame buffer using the existing feedback texture
+    else if opcode == OP_FRAME_BUFFER_READ {
+        // Sample feedback with transform (using global feedback params for now)
+        // In full implementation, each frame buffer would have its own texture
         result = vec4<f32>(sample_feedback(uv), 1.0);
     }
     // Single-input processors
@@ -766,13 +780,49 @@ fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
         let key = chroma_key(input_a.rgb, key_color, 0.3, 0.1);
         result = vec4<f32>(key_mix(input_b.rgb, input_a.rgb, key), 1.0);
     }
-    // Output nodes
-    else if opcode == OP_MAIN_OUT || opcode == OP_FEEDBACK_OUT {
+    // Frame Buffer Write - marks that this slot should be written to feedback
+    // This is a marker for the CPU-side renderer, doesn't do anything in shader
+    else if opcode == OP_FRAME_BUFFER_WRITE {
+        // Pass through input - the renderer will capture this for the frame buffer
+        result = input_a;
+    }
+    // Display outputs - these apply display-specific processing
+    else if opcode == OP_DISPLAY_MONITOR {
+        // Clean monitor - just pass through with brightness/contrast
+        let brightness = select(1.0, op.param0, op.param0 > 0.0);
+        let contrast = select(1.0, op.param1, op.param1 > 0.0);
+        var color = input_a.rgb;
+        color = (color - 0.5) * contrast + 0.5;
+        color = color * brightness;
+        result = vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    } else if opcode == OP_DISPLAY_CRT {
+        // CRT display - apply full CRT emulation
+        // Parameters packed: param0=scanline_intensity, param1=curvature, param2=vignette, param3=bloom
+        var color = input_a.rgb;
+
+        // Scanlines (use param0 for intensity)
+        let scan_intensity = select(0.15, op.param0, op.param0 > 0.0);
+        let scan = scanlines(uv, scan_intensity);
+        color = color * scan;
+
+        // Vignette (use param2)
+        let vig_amount = select(0.3, op.param2, op.param2 > 0.0);
+        let vig = vignette(uv, vig_amount);
+        color = color * vig;
+
+        // Bloom/phosphor glow (use param3)
+        let bloom_amount = select(0.2, op.param3, op.param3 > 0.0);
+        color = phosphor_glow(color, bloom_amount);
+
+        result = vec4<f32>(color, 1.0);
+    }
+    // Legacy output node
+    else if opcode == OP_MAIN_OUT {
         result = input_a;
     }
 
-    // Store result (clamped to 16 slots for performance)
-    if op.output_slot < 16u {
+    // Store result (clamped to 32 slots)
+    if op.output_slot < 32u {
         slots[op.output_slot] = result;
     }
 }
@@ -802,10 +852,26 @@ fn evaluate_graph(uv: vec2<f32>, time: f32) -> vec4<f32> {
     if op_count > 13u { execute_op(graph_ops[13], uv, time); }
     if op_count > 14u { execute_op(graph_ops[14], uv, time); }
     if op_count > 15u { execute_op(graph_ops[15], uv, time); }
-    // Support up to 16 ops for now - can extend if needed
+    if op_count > 16u { execute_op(graph_ops[16], uv, time); }
+    if op_count > 17u { execute_op(graph_ops[17], uv, time); }
+    if op_count > 18u { execute_op(graph_ops[18], uv, time); }
+    if op_count > 19u { execute_op(graph_ops[19], uv, time); }
+    if op_count > 20u { execute_op(graph_ops[20], uv, time); }
+    if op_count > 21u { execute_op(graph_ops[21], uv, time); }
+    if op_count > 22u { execute_op(graph_ops[22], uv, time); }
+    if op_count > 23u { execute_op(graph_ops[23], uv, time); }
+    if op_count > 24u { execute_op(graph_ops[24], uv, time); }
+    if op_count > 25u { execute_op(graph_ops[25], uv, time); }
+    if op_count > 26u { execute_op(graph_ops[26], uv, time); }
+    if op_count > 27u { execute_op(graph_ops[27], uv, time); }
+    if op_count > 28u { execute_op(graph_ops[28], uv, time); }
+    if op_count > 29u { execute_op(graph_ops[29], uv, time); }
+    if op_count > 30u { execute_op(graph_ops[30], uv, time); }
+    if op_count > 31u { execute_op(graph_ops[31], uv, time); }
+    // Support up to 32 ops
 
-    // Return main output (clamped to 16 slots)
-    if graph_header.main_out_slot < 16u {
+    // Return main output (clamped to 32 slots)
+    if graph_header.main_out_slot < 32u {
         return slots[graph_header.main_out_slot];
     }
 
@@ -822,32 +888,42 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var uv = in.uv;
     let time = timing.time;
 
-    // Apply CRT screen curvature
-    uv = crt_curve(uv, synth.curvature);
+    // Apply CRT screen curvature (global fallback - will be removed when CRT is fully node-based)
+    // Only apply if curvature is set (non-zero)
+    if synth.curvature > 0.001 {
+        uv = crt_curve(uv, synth.curvature);
 
-    // Check if we're outside the curved screen
-    if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        // Check if we're outside the curved screen
+        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
     }
 
     // ========== NODE GRAPH EVALUATION ==========
     // All signal generation and processing is handled by the node graph
+    // CRT Display nodes in the graph will apply their own CRT effects
     let graph_result = evaluate_graph(uv, time);
     var color = graph_result.rgb;
 
-    // ========== CRT EFFECTS ==========
-    // These are global post-processing effects applied after the node graph
+    // ========== LEGACY CRT EFFECTS (FALLBACK) ==========
+    // Only apply global CRT effects if no CRT Display node is in the graph
+    // Check display_count - if 0, use legacy global effects
+    if graph_header.display_count == 0u {
+        // Apply scanlines
+        if synth.scanline_intensity > 0.001 {
+            let scan = scanlines(uv, synth.scanline_intensity);
+            color = color * scan;
+        }
 
-    // Apply scanlines
-    let scan = scanlines(uv, synth.scanline_intensity);
-    color = color * scan;
+        // Apply vignette
+        if synth.vignette_amount > 0.001 {
+            let vig = vignette(uv, synth.vignette_amount);
+            color = color * vig;
+        }
 
-    // Apply vignette
-    let vig = vignette(uv, synth.vignette_amount);
-    color = color * vig;
-
-    // Phosphor glow
-    color = phosphor_glow(color, 0.2);
+        // Phosphor glow
+        color = phosphor_glow(color, 0.2);
+    }
 
     return vec4<f32>(color, 1.0);
 }
