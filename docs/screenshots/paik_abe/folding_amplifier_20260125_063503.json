@@ -1,0 +1,7 @@
+{
+  "name": "folding_amplifier",
+  "device": "paik_abe",
+  "description": "Folding amplifier waveshaper - nonlinear distortion that folds signal back instead of clipping",
+  "timestamp": "2026-01-25T06:35:03.132362",
+  "image_file": "folding_amplifier_20260125_063503.png"
+}

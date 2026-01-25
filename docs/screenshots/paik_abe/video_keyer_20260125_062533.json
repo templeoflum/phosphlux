@@ -1,0 +1,7 @@
+{
+  "name": "video_keyer",
+  "device": "paik_abe",
+  "description": "CA3054 Video Keyer - luminance-based keying between original and colorized sources",
+  "timestamp": "2026-01-25T06:25:33.887152",
+  "image_file": "video_keyer_20260125_062533.png"
+}

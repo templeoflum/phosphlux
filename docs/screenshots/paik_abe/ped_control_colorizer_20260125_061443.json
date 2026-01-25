@@ -1,0 +1,7 @@
+{
+  "name": "ped_control_colorizer",
+  "device": "paik_abe",
+  "description": "CA3019 PED Control colorizer processing SMPTE colorbars - 4-band amplitude window colorization",
+  "timestamp": "2026-01-25T06:14:43.925245",
+  "image_file": "ped_control_colorizer_20260125_061443.png"
+}
