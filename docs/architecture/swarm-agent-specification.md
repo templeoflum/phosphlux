@@ -32,6 +32,39 @@ A **swarm of specialized agents** running in parallel, sharing state, and trigge
 5. **Human in the Loop** - Orchestrator can pause/redirect at any time
 6. **Graceful Degradation** - System works with 1 agent or 10
 
+### 1.4 CRITICAL: Verification-First Operation
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  NEVER HALLUCINATE. NEVER ACT WITHOUT VERIFICATION.              ║
+║                                                                  ║
+║  This system does CALIBRATION and PATTERN MATCHING.              ║
+║  Everything is objective and verifiable:                         ║
+║    • Reference image exists → measure similarity                 ║
+║    • Document says X → cite the source                          ║
+║    • Parameter produces Y → screenshot proves it                 ║
+║                                                                  ║
+║  If you cannot verify → STOP and say "I cannot verify this"     ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Verification requirements by agent:**
+
+| Agent | Must Verify | How |
+|-------|-------------|-----|
+| Research | Every finding has a source | URL, document path, or "local model said [X] - NEEDS CONFIRMATION" |
+| Development | Every change has visual proof | Before/after screenshots with diff metrics |
+| Documentation | Every claim is traceable | Links to events, screenshots, sources |
+| Orchestrator | Decisions based on evidence | Cite agent outputs that informed decision |
+
+**Uncertainty handling:**
+```
+confidence >= 0.9  →  Act autonomously
+confidence 0.7-0.9 →  Act but flag for review
+confidence 0.5-0.7 →  Document both options, ask human
+confidence < 0.5   →  STOP, do not proceed, ask human
+```
+
 ---
 
 ## 2. Agent Types
@@ -573,15 +606,194 @@ DOCS [T+35s]: Committed. Exported node to src/nodes/exported/JonesColorizer.json
 
 ---
 
-## 9. Open Questions
+## 9. Design Decisions (Resolved)
 
-1. **Agent Autonomy Level** - How much can agents do without orchestrator approval?
-2. **Conflict Resolution** - When research and development disagree, who wins?
-3. **Resource Limits** - How many parallel agents? Token/compute budgets?
-4. **Failure Handling** - What if an agent crashes mid-task?
-5. **Human Override** - How does user interrupt/redirect the swarm?
-6. **Persistence** - Should agent state survive restarts?
-7. **Multi-User** - Can multiple humans orchestrate the same swarm?
+### 9.1 Agent Autonomy Level
+
+**Decision: HIGH AUTONOMY for objective tasks**
+
+This work is fundamentally **pattern matching and calibration**:
+- Matching documentation/references to visual results
+- Tuning parameters to match reference images
+- Archival research with verifiable sources
+
+Agents should operate autonomously with these constraints:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ MUST VERIFY - Never hallucinate                             │
+│ • Every finding must have a source                          │
+│ • Every visual match must have a diff score                 │
+│ • Every parameter change must have before/after screenshots │
+│ • If uncertain → STOP and ask                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ ASK HUMAN WHEN:                                             │
+│ • Ambiguous requirements (multiple valid interpretations)   │
+│ • Conflicting sources (can't determine which is correct)    │
+│ • Subjective decisions (aesthetic choices)                  │
+│ • Destructive actions (deleting files, force push)          │
+│ • Uncertainty > threshold                                   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ PROCEED AUTONOMOUSLY WHEN:                                  │
+│ • Clear reference to match                                  │
+│ • Objective measurement available (diff score, metrics)     │
+│ • Reversible action (can undo if wrong)                     │
+│ • Within established patterns                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 Conflict Resolution
+
+**Decision: DOCUMENT BOTH + OFFER OPTIONS**
+
+When research and development disagree, don't block - explore both paths:
+
+```
+CONFLICT DETECTED:
+  Research says: "CA3130 op-amp (faster slew)"
+  Current impl: "LM741 op-amp (slower slew)"
+
+RESOLUTION STRATEGY:
+
+Option A: "Pause and Ask"
+  → Stop work
+  → Present conflict to human with evidence
+  → Wait for decision
+  → Implement chosen path
+
+Option B: "Implement Both" (DEFAULT)
+  → Create config variant: colorizer_741.wgsl
+  → Create config variant: colorizer_ca3130.wgsl
+  → Document differences
+  → Let human choose later (or keep both)
+  → Continue with primary path
+
+Configuration:
+  conflict_strategy: "implement_both" | "pause_and_ask"
+
+Both options available. "Implement both" preferred because:
+  • Doesn't block progress
+  • Preserves optionality
+  • More data for eventual decision
+  • Can A/B compare results
+```
+
+### 9.3 Resource Management
+
+**Decision: DYNAMIC HARDWARE-ADAPTIVE TUNING**
+
+Don't hardcode limits. Discover optimal parallelism through measurement:
+
+```python
+class ResourceManager:
+    """Dynamically tune agent parallelism based on hardware."""
+
+    def __init__(self):
+        self.metrics = {
+            'cpu_usage': [],
+            'gpu_usage': [],
+            'memory_usage': [],
+            'response_times': {},
+            'thermal': [],
+        }
+        self.config = {
+            'max_parallel_agents': 4,      # Starting point
+            'thermal_threshold': 80,        # Celsius
+            'cpu_headroom': 0.2,           # Keep 20% free
+            'gpu_headroom': 0.1,           # Keep 10% free
+        }
+
+    async def monitor_cycle(self):
+        """Run every N seconds to adjust parallelism."""
+        current = self.sample_hardware()
+
+        # Too hot → reduce parallelism
+        if current['thermal'] > self.config['thermal_threshold']:
+            self.config['max_parallel_agents'] -= 1
+            log("Reducing parallelism: thermal")
+
+        # CPU saturated → reduce
+        if current['cpu'] > (1 - self.config['cpu_headroom']):
+            self.config['max_parallel_agents'] -= 1
+            log("Reducing parallelism: CPU")
+
+        # Plenty of headroom → try increasing
+        if (current['cpu'] < 0.5 and
+            current['thermal'] < self.config['thermal_threshold'] - 10):
+            self.config['max_parallel_agents'] += 1
+            log("Increasing parallelism: headroom available")
+
+        # Clamp to reasonable bounds
+        self.config['max_parallel_agents'] = clamp(
+            self.config['max_parallel_agents'],
+            min=1,
+            max=8
+        )
+
+    def benchmark_on_startup(self):
+        """Run calibration tests to find optimal settings."""
+        results = []
+        for n_agents in [1, 2, 4, 6, 8]:
+            metrics = self.run_test_workload(n_agents)
+            results.append({
+                'agents': n_agents,
+                'throughput': metrics['tasks_per_second'],
+                'latency_p95': metrics['latency_p95'],
+                'thermal_max': metrics['thermal_max'],
+            })
+
+        # Find sweet spot: max throughput without thermal issues
+        optimal = max(
+            [r for r in results if r['thermal_max'] < self.config['thermal_threshold']],
+            key=lambda r: r['throughput']
+        )
+
+        self.config['max_parallel_agents'] = optimal['agents']
+        log(f"Calibrated: {optimal['agents']} parallel agents optimal")
+```
+
+**Key principles:**
+- Benchmark on startup to find hardware limits
+- Monitor continuously during operation
+- Adapt to changing conditions (thermal, load)
+- Never hardcode - always measure
+- Portable to new hardware without code changes
+
+### 9.4 Persistence
+
+**Decision: FULL PERSISTENCE (Resume-Capable)**
+
+The swarm should survive restarts and be able to resume:
+
+```
+PERSISTED (survives restart):
+├── Event log (append-only) - full history
+├── Shared state - knowledge, code, screenshots
+├── Agent checkpoints - last known state
+└── Goal/progress markers - where we were
+
+ON RESTART:
+1. Load event log
+2. Reconstruct agent states from checkpoints
+3. Identify incomplete tasks
+4. Resume from last checkpoint
+
+BENEFITS:
+• Can stop work, close laptop, resume tomorrow
+• Crash recovery - no lost work
+• Can review history of how we got here
+• Can branch and explore alternatives
+```
+
+### 9.5 Remaining Open Questions
+
+1. **Multi-User** - Can multiple humans orchestrate the same swarm?
+2. **Failure Handling** - Specific recovery strategies for agent crashes
+3. **Human Override** - Interrupt mechanisms during autonomous operation
 
 ---
 
