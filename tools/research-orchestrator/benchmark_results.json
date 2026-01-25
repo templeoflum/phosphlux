@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-01-25T00:50:37.433458",
+  "tiers": {
+    "fast": {
+      "cold_start_sec": 8.74,
+      "warm_times_sec": [
+        5.27,
+        1.61
+      ],
+      "warm_mean_sec": 3.44,
+      "warm_stdev_sec": 2.59,
+      "success": true,
+      "error": null
+    },
+    "deep": {
+      "cold_start_sec": 9.33,
+      "warm_times_sec": [
+        10.18
+      ],
+      "warm_mean_sec": 10.18,
+      "warm_stdev_sec": 0,
+      "success": true,
+      "error": null
+    },
+    "embed": {
+      "cold_start_sec": 4.44,
+      "warm_times_sec": [
+        0.13
+      ],
+      "warm_mean_sec": 0.13,
+      "warm_stdev_sec": 0,
+      "success": true,
+      "error": null
+    }
+  },
+  "tier_switching": [
+    {
+      "from": "fast",
+      "to": "deep",
+      "time_sec": 4.41
+    },
+    {
+      "from": "deep",
+      "to": "fast",
+      "time_sec": 3.56
+    },
+    {
+      "from": "fast",
+      "to": "embed",
+      "time_sec": 3.14
+    }
+  ],
+  "recommendations": {
+    "fast": {
+      "warm_timeout_sec": 15.5,
+      "cold_timeout_sec": 13.1,
+      "abort_threshold_sec": 17.5,
+      "expected_warm_sec": 3.4,
+      "expected_cold_sec": 8.7
+    },
+    "deep": {
+      "warm_timeout_sec": 30.5,
+      "cold_timeout_sec": 14.0,
+      "abort_threshold_sec": 50.9,
+      "expected_warm_sec": 10.2,
+      "expected_cold_sec": 9.3
+    },
+    "embed": {
+      "warm_timeout_sec": 0.4,
+      "cold_timeout_sec": 6.7,
+      "abort_threshold_sec": 8.9,
+      "expected_warm_sec": 0.1,
+      "expected_cold_sec": 4.4
+    },
+    "tier_switching": {
+      "expected_sec": 3.7,
+      "timeout_sec": 5.6,
+      "abort_threshold_sec": 9.3
+    }
+  }
+}

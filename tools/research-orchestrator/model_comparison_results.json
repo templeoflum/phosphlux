@@ -1,0 +1,168 @@
+{
+  "timestamp": "2026-01-25T00:56:00.045941",
+  "chat": [
+    {
+      "model": "phi4-mini:latest",
+      "time_sec": 5.36,
+      "answer_len": 459,
+      "answer_preview": "The Paik/Abe Folding Amplifier, also known as the Foton PAiM or Preamplifier and Mixing Module by Paik & Abe Electronics, features integrated preampli",
+      "success": true
+    },
+    {
+      "model": "llama3.1:latest",
+      "time_sec": 6.97,
+      "answer_len": 399,
+      "answer_preview": "The Paik/Abe folding amplifier is an electronic instrument invented by composer Nam June Paik and engineer Shuya Abe in the 1960s. It's a type of volt",
+      "success": true
+    },
+    {
+      "model": "qwen3:latest",
+      "time_sec": 18.79,
+      "answer_len": 299,
+      "answer_preview": "A Paik/Abe folding amplifier refers to a type of audio amplifier utilizing a folded cascode circuit design, which enhances performance by improving ba",
+      "success": true
+    },
+    {
+      "model": "gemma3n:latest",
+      "time_sec": 14.96,
+      "answer_len": 393,
+      "answer_preview": "A Paik/Ab\u00e9 folding amplifier is an amplifier configuration that uses two operational amplifiers to increase the voltage swing of an input signal. It e",
+      "success": true
+    },
+    {
+      "model": "gemma3:latest",
+      "time_sec": 6.99,
+      "answer_len": 399,
+      "answer_preview": "A Paik/Abe folding amplifier is a highly regarded, vintage amplifier designed by Dave Paik and later refined by Abe Conrad. These amplifiers are known",
+      "success": true
+    },
+    {
+      "model": "qwen2.5-coder:7b",
+      "time_sec": 8.75,
+      "answer_len": 400,
+      "answer_preview": "The Paik/Abe folding amplifier is an electronic device developed in 1970 by Soichiro Abe and Kenji Paik, designed to fold the frequency range of an au",
+      "success": true
+    },
+    {
+      "model": "granite3.3:latest",
+      "time_sec": 12.23,
+      "answer_len": 538,
+      "answer_preview": "The Paik/Abe folding amplifier is a type of video signal processor, named after its inventors Nam June Paik and Shuya Abe. It manipulates the video si",
+      "success": true
+    },
+    {
+      "model": "smollm2:1.7b",
+      "time_sec": 4.69,
+      "answer_len": 302,
+      "answer_preview": "A Paik/Abe folding amplifier is an audio amplifier manufactured by Sony that was popular in the 1980s and 1990s. It used a unique design where two amp",
+      "success": true
+    },
+    {
+      "model": "tinyllama:latest",
+      "time_sec": 2.56,
+      "answer_len": 433,
+      "answer_preview": "A Paik/Abel folding amplifier is a type of amplifier that can be used in both single-ended and differential mode. It features an inverted \"H\" shape, w",
+      "success": true
+    },
+    {
+      "model": "phi4-mini-reasoning:latest",
+      "time_sec": 13.44,
+      "answer_len": 512,
+      "answer_preview": "A Paik/Abe folding amplifier is a portable, collapsible audio device designed for live events like weddings or concerts. Founded by Bob Paley (Paik), ",
+      "success": true
+    },
+    {
+      "model": "lfm2.5-thinking:latest",
+      "time_sec": 5.97,
+      "answer_len": 124,
+      "answer_preview": "A Paik/Abe folding amplifier is a compact, foldable device enhancing portability and efficiency in specialized applications.",
+      "success": true
+    },
+    {
+      "model": "deepscaler:latest",
+      "time_sec": 14.14,
+      "answer_len": 335,
+      "answer_preview": "A Paik-Abe folding amplifier is an audio component designed to split an input signal into two parts, each amplified separately, then combined for outp",
+      "success": true
+    },
+    {
+      "model": "ministral-3:latest",
+      "time_sec": 21.39,
+      "answer_len": 658,
+      "answer_preview": "A **Paik/Abe folding amplifier** is a type of **operational amplifier (op-amp) circuit** designed to achieve **high voltage gain** while maintaining *",
+      "success": true
+    },
+    {
+      "model": "rnj-1:latest",
+      "time_sec": 8.08,
+      "answer_len": 369,
+      "answer_preview": "A Paik/Abe folding amplifier is a type of high-frequency amplifier configuration that uses a folded cascode topology. It combines the benefits of casc",
+      "success": true
+    },
+    {
+      "model": "phi3:latest",
+      "time_sec": 5.45,
+      "answer_len": 555,
+      "answer_preview": "The Paik/Abe Folding Amplifier, created by Nam Pyo Hong and Takao Asano in the late '60s to early '70s, is an innovative musical instrument that folds",
+      "success": true
+    }
+  ],
+  "vision": [
+    {
+      "model": "moondream:latest",
+      "time_sec": 11.51,
+      "answer_len": 815,
+      "success": true
+    },
+    {
+      "model": "llava:latest",
+      "time_sec": 14.07,
+      "answer_len": 1030,
+      "success": true
+    },
+    {
+      "model": "llama3.2-vision:latest",
+      "time_sec": 108.55,
+      "answer_len": 2892,
+      "success": true
+    }
+  ],
+  "embed": [
+    {
+      "model": "qwen3-embedding:latest",
+      "time_sec": 5.24,
+      "embedding_dim": 4096,
+      "success": true
+    },
+    {
+      "model": "bge-m3:latest",
+      "time_sec": 4.353,
+      "embedding_dim": 1024,
+      "success": true
+    },
+    {
+      "model": "mxbai-embed-large:latest",
+      "time_sec": 1.404,
+      "embedding_dim": 1024,
+      "success": true
+    },
+    {
+      "model": "nomic-embed-text:latest",
+      "time_sec": 0.774,
+      "embedding_dim": 768,
+      "success": true
+    },
+    {
+      "model": "all-minilm:latest",
+      "time_sec": 0.988,
+      "embedding_dim": 384,
+      "success": true
+    },
+    {
+      "model": "embeddinggemma:latest",
+      "time_sec": 1.954,
+      "embedding_dim": 768,
+      "success": true
+    }
+  ]
+}

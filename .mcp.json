@@ -3,6 +3,10 @@
     "research": {
       "command": "python",
       "args": ["tools/research-orchestrator/mcp_server.py"]
+    },
+    "workbench": {
+      "command": "python",
+      "args": ["tools/device-workbench/mcp_server.py"]
     }
   }
 }

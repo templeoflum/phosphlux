@@ -6,17 +6,23 @@ Exposes Ollama models as tools for Claude CLI to orchestrate
 historical video synthesis hardware research and emulation.
 
 Architecture:
-  Claude (orchestrator) → dispatches to local models → reviews outputs → implements
+  Claude (orchestrator) -> dispatches to local models -> reviews outputs -> implements
 
-Tiers:
-  - Fast (phi4-mini, ~4s): Quick lookups, simple questions
-  - Deep (qwen3, ~22s): Research synthesis, code generation
+Tiers (benchmarked 2026-01-25):
+  - Fast (phi4-mini, ~3s warm, ~9s cold): Quick lookups, simple questions
+  - Deep (llama3.1, ~10s warm, ~9s cold): Research synthesis, video art domain expertise
   - Vision (moondream, ~5-10s): Extract components/text from images
-  - Embed (qwen3-embedding): Document embeddings for search
+  - Embed (qwen3-embedding, ~0.1s warm, ~4s cold): Document embeddings for search
+
+Performance Notes:
+  - Cold start adds 4-9s (model loading)
+  - Tier switching adds 3-5s (model swap)
+  - See benchmark_results.json for detailed timings
 """
 
 import asyncio
 import base64
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -25,12 +31,20 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-# Tiered model assignments
+# Tiered model assignments (benchmarked for video synthesis domain accuracy)
 MODELS = {
-    "fast": "phi4-mini:latest",        # Quick reasoning (~4s)
-    "deep": "qwen3:latest",            # Research, synthesis (~22s)
+    "fast": "phi4-mini:latest",        # Quick reasoning (~5s)
+    "deep": "llama3.1:latest",         # Research - correct Paik/Abe domain (~10s)
     "vision": "moondream:latest",      # Image extraction (~5-10s)
-    "embed": "qwen3-embedding:latest", # Document embeddings
+    "embed": "qwen3-embedding:latest", # Document embeddings (~0.1s warm)
+}
+
+# Timeout thresholds (seconds) - based on benchmark_results.json
+TIMEOUTS = {
+    "fast": {"warm": 16, "cold": 13, "abort": 18},
+    "deep": {"warm": 31, "cold": 14, "abort": 51},
+    "vision": {"warm": 15, "cold": 20, "abort": 30},  # Not re-benchmarked
+    "embed": {"warm": 1, "cold": 7, "abort": 9},
 }
 
 server = Server("research-orchestrator")
@@ -61,7 +75,7 @@ async def list_tools():
         Tool(
             name="research_query",
             description="Deep research on video synthesis topics. Use for: historical "
-                       "context, circuit behavior, component specs, implementation details. ~22s response.",
+                       "context, circuit behavior, component specs, implementation details. ~10s response.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -82,7 +96,7 @@ async def list_tools():
         # Deep tier - code generation
         Tool(
             name="generate_shader",
-            description="Generate WGSL shader code draft. Claude reviews before implementation. ~22s response.",
+            description="Generate WGSL shader code draft. Claude reviews before implementation. ~10s response.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -200,10 +214,29 @@ async def call_tool(name: str, arguments: dict):
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
 
+# === Helpers ===
+
+def timed_response(tier: str, content: str, elapsed: float) -> list:
+    """Format response with timing metadata."""
+    threshold = TIMEOUTS[tier]["warm"]
+    status = "OK" if elapsed < threshold else "SLOW"
+    header = f"[{tier.upper()}] {elapsed:.1f}s ({status})\n\n"
+    return [TextContent(type="text", text=header + content)]
+
+
+def error_response(tier: str, error: str, elapsed: float) -> list:
+    """Format error response with timing."""
+    return [TextContent(
+        type="text",
+        text=f"[{tier.upper()} ERROR] {elapsed:.1f}s\n{error}"
+    )]
+
+
 # === Fast Tier ===
 
 async def quick_query(question: str):
     """Fast lookup using phi4-mini."""
+    start = time.time()
     try:
         response = ollama.chat(
             model=MODELS["fast"],
@@ -212,18 +245,22 @@ async def quick_query(question: str):
                 "content": question
             }]
         )
-        return [TextContent(type="text", text=response["message"]["content"])]
+        elapsed = time.time() - start
+        return timed_response("fast", response["message"]["content"], elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Query error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("fast", str(e), elapsed)
 
 
 # === Deep Tier ===
 
 async def research_query(topic: str, focus: str):
-    """Deep research using qwen3."""
+    """Deep research using llama3.1 (accurate for video synthesis domain)."""
+    start = time.time()
 
     system_prompt = """You are a video synthesis hardware research specialist.
 Your knowledge spans analog video circuits from 1950s oscilloscopes to modern LZX modules.
+Key figures: Nam June Paik, Shuya Abe, Dan Sandin, Bill Hearn, Eric Siegel.
 
 Provide:
 1. Technical specifications and component values
@@ -232,7 +269,7 @@ Provide:
 4. Known quirks and "happy accidents"
 
 Flag uncertain information with [UNCERTAIN].
-Format as structured markdown."""
+Format as structured markdown. Be concise but complete."""
 
     focus_instructions = {
         "components": "Focus on component values, ICs, part numbers.",
@@ -255,13 +292,16 @@ Be specific and technical."""
                 {"role": "user", "content": prompt}
             ]
         )
-        return [TextContent(type="text", text=response["message"]["content"])]
+        elapsed = time.time() - start
+        return timed_response("deep", response["message"]["content"], elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Research error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("deep", str(e), elapsed)
 
 
 async def generate_shader(spec: str, transfer_function: Optional[str], reference: Optional[str]):
-    """Generate WGSL shader draft using qwen3."""
+    """Generate WGSL shader draft using llama3.1."""
+    start = time.time()
 
     system_prompt = """You are a GPU shader specialist for video synthesis.
 Write WGSL shaders for the Phosphlux analog video synthesizer.
@@ -291,28 +331,32 @@ This is a DRAFT for Claude to review before implementation."""
                 {"role": "user", "content": prompt}
             ]
         )
-        return [TextContent(type="text", text=response["message"]["content"])]
+        elapsed = time.time() - start
+        return timed_response("deep", response["message"]["content"], elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Shader error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("deep", str(e), elapsed)
 
 
 # === Vision Tier ===
 
 async def extract_from_image(image_path: str, extract_type: str):
     """Extract components/text from image using moondream."""
+    start = time.time()
 
     path = Path(image_path)
     if not path.exists():
-        return [TextContent(type="text", text=f"Image not found: {image_path}")]
+        return error_response("vision", f"Image not found: {image_path}", 0)
 
     with open(path, "rb") as f:
         image_data = base64.b64encode(f.read()).decode()
 
     prompts = {
-        "components": "List all electronic components visible: resistors (with values), "
-                     "capacitors, ICs (part numbers), transistors, etc. Format as a list.",
-        "text": "Extract all readable text from this image.",
-        "labels": "List all labels, annotations, and reference designators visible."
+        "components": "Describe all electronic components in this schematic. "
+                     "Include resistor values, capacitor values, IC part numbers, "
+                     "transistor types, and any other parts you can identify.",
+        "text": "Read and transcribe all text visible in this image.",
+        "labels": "What labels, titles, and reference designators (like R1, C1, U1) are shown?"
     }
 
     try:
@@ -324,9 +368,11 @@ async def extract_from_image(image_path: str, extract_type: str):
                 "images": [image_data]
             }]
         )
-        return [TextContent(type="text", text=response["message"]["content"])]
+        elapsed = time.time() - start
+        return timed_response("vision", response["message"]["content"], elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Vision error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("vision", str(e), elapsed)
 
 
 # === Embedding Tier ===
@@ -335,6 +381,7 @@ embedding_store = {}  # In-memory; replace with FAISS for persistence
 
 async def embed_document(text: str, doc_id: str):
     """Create and store document embedding."""
+    start = time.time()
     try:
         response = ollama.embeddings(
             model=MODELS["embed"],
@@ -344,15 +391,19 @@ async def embed_document(text: str, doc_id: str):
             "embedding": response["embedding"],
             "text": text[:500]
         }
-        return [TextContent(type="text", text=f"Embedded: {doc_id} ({len(text)} chars)")]
+        elapsed = time.time() - start
+        return timed_response("embed", f"Embedded: {doc_id} ({len(text)} chars)", elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Embed error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("embed", str(e), elapsed)
 
 
 async def search_knowledge(query: str, top_k: int):
     """Search embedded documents."""
+    start = time.time()
+
     if not embedding_store:
-        return [TextContent(type="text", text="No documents embedded yet.")]
+        return [TextContent(type="text", text="[EMBED] No documents embedded yet.")]
 
     try:
         import numpy as np
@@ -369,13 +420,15 @@ async def search_knowledge(query: str, top_k: int):
 
         results.sort(key=lambda x: x[1], reverse=True)
 
-        output = "Results:\n\n"
+        output = f"Found {len(results)} documents:\n\n"
         for doc_id, score, preview in results[:top_k]:
             output += f"**{doc_id}** ({score:.3f})\n{preview}...\n\n"
 
-        return [TextContent(type="text", text=output)]
+        elapsed = time.time() - start
+        return timed_response("embed", output, elapsed)
     except Exception as e:
-        return [TextContent(type="text", text=f"Search error: {str(e)}")]
+        elapsed = time.time() - start
+        return error_response("embed", str(e), elapsed)
 
 
 async def main():

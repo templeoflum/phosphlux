@@ -1,0 +1,5 @@
+C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\debug\deps\document_features-6f882bbd62228595.d: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\document-features-0.2.12\lib.rs
+
+C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\debug\deps\document_features-6f882bbd62228595.dll: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\document-features-0.2.12\lib.rs
+
+C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\document-features-0.2.12\lib.rs:

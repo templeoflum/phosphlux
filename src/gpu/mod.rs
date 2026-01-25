@@ -1,7 +1,10 @@
-//! GPU rendering and compute pipeline
+//! GPU module - rendering and shader composition
 //!
-//! This is where the magic happens - all signal processing runs on the GPU
-//! in parallel, just like voltage flows through analog circuits simultaneously.
+//! v2 architecture: compose device shaders at compile time
 
-pub mod renderer;
-pub mod graph_compiler;
+pub mod shader_composer;
+
+pub use shader_composer::{
+    ComposedShader, ComposeError, Connection, DeviceInstance, DeviceParameter,
+    DevicePatch, Port, ShaderComposer, ShaderDevice, SignalType,
+};

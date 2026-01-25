@@ -1,9 +1,9 @@
-//! User Interface Module
+//! UI Module
 //!
-//! Provides egui-based UI for:
-//! - Node graph editor (signal routing/patching)
-//! - Node parameters via inspector panel
-//! - Presets
+//! Device-centric node editor and patch management.
+//! To be implemented - will use egui like v1.
 
-pub mod patch;
-pub mod node_editor;
+// TODO: Device palette (organized by era/manufacturer)
+// TODO: Device graph editor
+// TODO: Connection validation (voltage compatibility)
+// TODO: Bend point UI

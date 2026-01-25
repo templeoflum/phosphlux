@@ -1,0 +1,10 @@
+C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\release\deps\bitstream_io-340c8afcdd10d75b.d: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\lib.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\huffman.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\read.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\write.rs
+
+C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\release\deps\libbitstream_io-340c8afcdd10d75b.rlib: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\lib.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\huffman.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\read.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\write.rs
+
+C:\Users\User\Documents\0000000\analog-claude-video-synthesis-foundation-8LfZV\tools\device-workbench\workbench-app\target\release\deps\libbitstream_io-340c8afcdd10d75b.rmeta: C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\lib.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\huffman.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\read.rs C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\write.rs
+
+C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\lib.rs:
+C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\huffman.rs:
+C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\read.rs:
+C:\Users\User\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-4.9.0\src\write.rs:
