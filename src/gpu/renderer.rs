@@ -651,6 +651,20 @@ impl Renderer {
         );
     }
 
+    /// Update only node parameters without recompiling the graph structure
+    /// This is much faster than update_graph() when only parameters changed
+    pub fn update_graph_params(&mut self, patch: &SignalPatch) {
+        // Update parameters in the compiled ops
+        if self.compiled_graph.update_params(patch) {
+            // Only upload if something changed
+            self.queue.write_buffer(
+                &self.graph_ops_buffer,
+                0,
+                bytemuck::cast_slice(&self.compiled_graph.ops),
+            );
+        }
+    }
+
     /// Register output texture with egui for display in UI
     pub fn register_output_texture(&mut self, egui_renderer: &mut egui_wgpu::Renderer) {
         // Remove old texture if exists
@@ -983,25 +997,18 @@ impl Renderer {
             pixels_per_point: scale_factor,
         };
 
-        // Submit the synth rendering first
-        self.queue.submit(std::iter::once(encoder.finish()));
-
-        // Create separate encoder for egui
-        let mut egui_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Egui Encoder"),
-        });
-
+        // Prepare egui rendering (uses same encoder to batch submissions)
         egui_renderer.update_buffers(
             &self.device,
             &self.queue,
-            &mut egui_encoder,
+            &mut encoder,
             &paint_jobs,
             &screen_descriptor,
         );
 
-        // Render egui pass
+        // Render egui pass (in same encoder as synth passes)
         {
-            let render_pass = egui_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Egui Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &output_view,
@@ -1026,8 +1033,8 @@ impl Renderer {
             egui_renderer.free_texture(id);
         }
 
-        // Submit egui encoder
-        self.queue.submit(std::iter::once(egui_encoder.finish()));
+        // Single batched submission (synth + egui in one command buffer)
+        self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
         Ok(())

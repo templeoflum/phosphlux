@@ -96,8 +96,12 @@ pub struct NodeEditor {
     hovered_socket: Option<(u32, bool, usize)>,
     /// Hovered connection index (for click-to-delete)
     hovered_connection: Option<usize>,
-    /// Flag set when the graph has been modified (for GPU update)
+    /// Flag set when graph structure changes (nodes added/removed, connections changed)
+    /// Requires full graph recompilation
     pub graph_modified: bool,
+    /// Flag set when only node parameters change (no structural changes)
+    /// Only requires parameter re-upload, not full recompilation
+    pub params_modified: bool,
 }
 
 impl Default for NodeEditor {
@@ -116,6 +120,7 @@ impl Default for NodeEditor {
             hovered_socket: None,
             hovered_connection: None,
             graph_modified: false,
+            params_modified: false,
         }
     }
 }
@@ -880,7 +885,8 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                     if ui.add(egui::Slider::new(&mut val, range).text(&key)).changed() {
                         if let Some(node) = patch.get_node_mut(node_id) {
                             node.params.insert(key, val);
-                            editor.graph_modified = true;
+                            // Only params changed - use lightweight update path
+                            editor.params_modified = true;
                         }
                     }
                 }

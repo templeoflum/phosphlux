@@ -864,13 +864,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Use node graph when available, otherwise fall back to legacy hardcoded path
     if graph_header.op_count > 0u {
         // Node graph path - evaluate the compiled graph
+        // Feedback is handled by FeedbackIn nodes within the graph itself,
+        // so we use the graph output directly (no redundant feedback sample)
         let graph_result = evaluate_graph(safe_uv, time);
-
-        // Get feedback for mixing
-        let fb_color = sample_feedback(safe_uv);
-
-        // Mix graph output with feedback
-        color = mix(graph_result.rgb, fb_color, feedback.mix);
+        color = graph_result.rgb;
     } else {
         // Legacy hardcoded path (for backward compatibility)
 

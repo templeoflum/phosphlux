@@ -265,13 +265,21 @@ impl App {
             })
         };
 
-        // Check if graph needs update (from node editor interactions)
+        // Check if graph structure changed (requires full recompile)
         if self.node_editor.graph_modified {
             if let Some(renderer) = &mut self.renderer {
                 renderer.update_graph(&self.patch);
             }
             self.node_editor.graph_modified = false;
-            self.graph_needs_update = false;  // Clear this too
+            self.node_editor.params_modified = false;  // Clear params too since we just recompiled
+            self.graph_needs_update = false;
+        }
+        // Check if only parameters changed (lightweight update - no recompile)
+        else if self.node_editor.params_modified {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.update_graph_params(&self.patch);
+            }
+            self.node_editor.params_modified = false;
         }
 
         // Handle platform output

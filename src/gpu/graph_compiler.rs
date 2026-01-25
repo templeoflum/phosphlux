@@ -157,6 +157,8 @@ impl Default for CompiledGraphHeader {
 pub struct CompiledGraph {
     pub header: CompiledGraphHeader,
     pub ops: Vec<GraphOp>,
+    /// Maps node ID to operation index (for parameter-only updates)
+    pub node_to_op: HashMap<u32, usize>,
 }
 
 impl CompiledGraph {
@@ -165,6 +167,7 @@ impl CompiledGraph {
         Self {
             header: CompiledGraphHeader::default(),
             ops: vec![GraphOp::default(); MAX_OPS],
+            node_to_op: HashMap::new(),
         }
     }
 
@@ -214,7 +217,57 @@ impl CompiledGraph {
                 _pad: 0,
             },
             ops,
+            node_to_op: HashMap::new(), // Default fallback doesn't map to user nodes
         }
+    }
+
+    /// Update only the parameters in the ops array from the patch
+    /// Returns true if any parameters were updated
+    pub fn update_params(&mut self, patch: &SignalPatch) -> bool {
+        let mut updated = false;
+
+        for (&node_id, &op_idx) in &self.node_to_op {
+            if op_idx >= self.ops.len() {
+                continue;
+            }
+
+            if let Some(node) = patch.get_node(node_id) {
+                let op = &mut self.ops[op_idx];
+
+                // Extract params using same logic as compile_node
+                let new_param0 = node.params.get("frequency")
+                    .or(node.params.get("gain"))
+                    .or(node.params.get("levels"))
+                    .or(node.params.get("threshold"))
+                    .or(node.params.get("clip_black"))
+                    .or(node.params.get("mix"))
+                    .or(node.params.get("amount"))
+                    .or(node.params.get("size"))
+                    .copied()
+                    .unwrap_or(0.0);
+
+                let new_param1 = node.params.get("phase")
+                    .or(node.params.get("clip_white"))
+                    .or(node.params.get("softness"))
+                    .copied()
+                    .unwrap_or(0.0);
+
+                let new_param2 = node.params.get("param2").copied().unwrap_or(0.0);
+                let new_param3 = node.params.get("param3").copied().unwrap_or(0.0);
+
+                // Only mark as updated if values actually changed
+                if op.param0 != new_param0 || op.param1 != new_param1 ||
+                   op.param2 != new_param2 || op.param3 != new_param3 {
+                    op.param0 = new_param0;
+                    op.param1 = new_param1;
+                    op.param2 = new_param2;
+                    op.param3 = new_param3;
+                    updated = true;
+                }
+            }
+        }
+
+        updated
     }
 }
 
@@ -222,6 +275,8 @@ impl CompiledGraph {
 pub struct GraphCompiler {
     /// Maps node ID to output slot
     node_slots: HashMap<u32, u32>,
+    /// Maps node ID to operation index (for parameter updates)
+    node_to_op: HashMap<u32, usize>,
     /// Next available slot
     next_slot: u32,
     /// Compiled operations
@@ -236,6 +291,7 @@ impl GraphCompiler {
     pub fn new() -> Self {
         Self {
             node_slots: HashMap::new(),
+            node_to_op: HashMap::new(),
             next_slot: 0,
             ops: Vec::new(),
             main_out_slot: None,
@@ -275,6 +331,7 @@ impl GraphCompiler {
                 _pad: 0,
             },
             ops,
+            node_to_op: compiler.node_to_op,
         }
     }
 
@@ -376,6 +433,10 @@ impl GraphCompiler {
             param2,
             param3,
         };
+
+        // Record node_id → op_index mapping for parameter updates
+        let op_index = self.ops.len();
+        self.node_to_op.insert(node_id, op_index);
 
         self.ops.push(op);
 
