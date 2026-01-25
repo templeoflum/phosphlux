@@ -86,6 +86,72 @@ var feedback_texture: texture_2d<f32>;
 @group(1) @binding(1)
 var feedback_sampler: sampler;
 
+// ============================================
+// NODE GRAPH EXECUTION
+// ============================================
+
+// Graph header - controls execution
+struct GraphHeader {
+    op_count: u32,
+    main_out_slot: u32,
+    feedback_out_slot: u32,
+    _pad: u32,
+}
+
+// Single graph operation
+struct GraphOp {
+    opcode: u32,
+    input_a: u32,
+    input_b: u32,
+    output_slot: u32,
+    param0: f32,
+    param1: f32,
+    param2: f32,
+    param3: f32,
+}
+
+// Operation codes (must match graph_compiler.rs OpCode enum)
+const OP_RAMP_H: u32 = 0u;
+const OP_RAMP_V: u32 = 1u;
+const OP_RAMP_RADIAL: u32 = 2u;
+const OP_OSC_H: u32 = 3u;
+const OP_OSC_V: u32 = 4u;
+const OP_NOISE_WHITE: u32 = 5u;
+const OP_NOISE_PINK: u32 = 6u;
+const OP_NOISE_BROWN: u32 = 7u;
+const OP_SHAPE_CIRCLE: u32 = 8u;
+const OP_SHAPE_RECT: u32 = 9u;
+const OP_SHAPE_DIAMOND: u32 = 10u;
+const OP_FEEDBACK_IN: u32 = 11u;
+const OP_FOLDER: u32 = 20u;
+const OP_QUANTIZER: u32 = 21u;
+const OP_SOFT_CLIP: u32 = 22u;
+const OP_SOLARIZE: u32 = 23u;
+const OP_INVERTER: u32 = 24u;
+const OP_HUE_SHIFT: u32 = 25u;
+const OP_COLOR_SPECTRUM: u32 = 30u;
+const OP_COLOR_THRESHOLD: u32 = 31u;
+const OP_COLOR_GRADIENT: u32 = 32u;
+const OP_LUMA_KEY: u32 = 40u;
+const OP_MIXER: u32 = 41u;
+const OP_MULTIPLIER: u32 = 42u;
+const OP_CHROMA_KEY: u32 = 43u;
+const OP_MAIN_OUT: u32 = 50u;
+const OP_FEEDBACK_OUT: u32 = 51u;
+const OP_NOP: u32 = 255u;
+
+// Graph bindings (group 2)
+@group(2) @binding(0)
+var<uniform> graph_header: GraphHeader;
+
+@group(2) @binding(1)
+var<storage, read> graph_ops: array<GraphOp>;
+
+// Signal slots for intermediate values (16 vec4 slots - reduced for performance)
+// Each slot stores RGBA where A is typically 1.0 for RGB signals
+// or the luminance is stored in R for grayscale signals
+var<private> slots: array<vec4<f32>, 16>;
+
 // Vertex output
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -155,6 +221,18 @@ fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
     if hi == 3 { return vec3<f32>(p, q, v); }
     if hi == 4 { return vec3<f32>(t, p, v); }
     return vec3<f32>(v, p, q);
+}
+
+// Fast hue rotation using Rodrigues' rotation formula
+// This is MUCH faster than RGB->HSV->rotate->RGB conversion
+// Rotates the color around the (1,1,1) axis (gray line) in RGB space
+fn rotate_hue_fast(color: vec3<f32>, angle: f32) -> vec3<f32> {
+    let k = vec3<f32>(0.57735026919); // 1/sqrt(3) - normalized (1,1,1) axis
+    let cos_a = cos(angle);
+    let sin_a = sin(angle);
+
+    // Rodrigues rotation: v' = v*cos(a) + (k×v)*sin(a) + k*(k·v)*(1-cos(a))
+    return color * cos_a + cross(k, color) * sin_a + k * dot(k, color) * (1.0 - cos_a);
 }
 
 // ============================================
@@ -524,11 +602,15 @@ fn sample_feedback(uv: vec2<f32>) -> vec3<f32> {
     // Sample feedback texture
     var fb_color = textureSample(feedback_texture, feedback_sampler, fb_uv).rgb;
 
-    // Apply hue shift
-    var hsv = rgb_to_hsv(fb_color);
-    hsv.x = fract(hsv.x + feedback.hue_shift);
-    hsv.y = hsv.y * feedback.saturation;
-    fb_color = hsv_to_rgb(hsv);
+    // Apply hue shift using fast rotation (much faster than HSV conversion)
+    // Convert hue_shift (0-1) to radians (0-2π)
+    let hue_angle = feedback.hue_shift * 6.283185307;
+    fb_color = rotate_hue_fast(fb_color, hue_angle);
+
+    // Apply saturation adjustment
+    // Mix with luminance to desaturate
+    let luma = dot(fb_color, vec3<f32>(0.299, 0.587, 0.114));
+    fb_color = mix(vec3<f32>(luma), fb_color, feedback.saturation);
 
     // Apply decay
     fb_color = fb_color * feedback.decay;
@@ -594,6 +676,162 @@ fn vignette(uv: vec2<f32>, amount: f32) -> f32 {
 }
 
 // ============================================
+// NODE GRAPH EVALUATION
+// ============================================
+
+// Execute a single graph operation
+fn execute_op(op: GraphOp, uv: vec2<f32>, time: f32) {
+    let opcode = op.opcode;
+    var result = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+
+    // Get input values (clamped to 16 slots for performance)
+    var input_a = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    var input_b = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    if op.input_a < 16u {
+        input_a = slots[op.input_a];
+    }
+    if op.input_b < 16u {
+        input_b = slots[op.input_b];
+    }
+
+    // Source operations (no inputs)
+    if opcode == OP_RAMP_H {
+        result = vec4<f32>(vec3<f32>(ramp_h(uv)), 1.0);
+    } else if opcode == OP_RAMP_V {
+        result = vec4<f32>(vec3<f32>(ramp_v(uv)), 1.0);
+    } else if opcode == OP_RAMP_RADIAL {
+        result = vec4<f32>(vec3<f32>(ramp_radial(uv)), 1.0);
+    } else if opcode == OP_OSC_H {
+        let freq = select(4.0, op.param0, op.param0 > 0.0);
+        result = vec4<f32>(vec3<f32>(osc_h(uv, freq, time * 0.5 + op.param1)), 1.0);
+    } else if opcode == OP_OSC_V {
+        let freq = select(4.0, op.param0, op.param0 > 0.0);
+        result = vec4<f32>(vec3<f32>(osc_v(uv, freq, time * 0.5 + op.param1)), 1.0);
+    } else if opcode == OP_NOISE_WHITE {
+        result = vec4<f32>(vec3<f32>(noise_white(uv, time)), 1.0);
+    } else if opcode == OP_NOISE_PINK {
+        result = vec4<f32>(vec3<f32>(noise_pink(uv, time)), 1.0);
+    } else if opcode == OP_NOISE_BROWN {
+        result = vec4<f32>(vec3<f32>(noise_brown(uv, time)), 1.0);
+    } else if opcode == OP_SHAPE_CIRCLE {
+        let center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
+        let size = select(0.3, op.param0, op.param0 > 0.0);
+        let soft = select(0.05, op.param1, op.param1 > 0.0);
+        result = vec4<f32>(vec3<f32>(shape_circle_soft(uv, center, size, soft)), 1.0);
+    } else if opcode == OP_SHAPE_RECT {
+        let center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
+        let size = select(0.3, op.param0, op.param0 > 0.0);
+        let soft = select(0.05, op.param1, op.param1 > 0.0);
+        result = vec4<f32>(vec3<f32>(shape_rect_soft(uv, center, vec2<f32>(size), soft)), 1.0);
+    } else if opcode == OP_SHAPE_DIAMOND {
+        let center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
+        let size = select(0.3, op.param0, op.param0 > 0.0);
+        let soft = select(0.05, op.param1, op.param1 > 0.0);
+        result = vec4<f32>(vec3<f32>(shape_diamond_soft(uv, center, size, soft)), 1.0);
+    } else if opcode == OP_FEEDBACK_IN {
+        // Sample feedback with transform
+        result = vec4<f32>(sample_feedback(uv), 1.0);
+    }
+    // Single-input processors
+    else if opcode == OP_FOLDER {
+        let gain = select(2.0, op.param0, op.param0 > 0.0);
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(vec3<f32>(fold(luma, gain)), 1.0);
+    } else if opcode == OP_QUANTIZER {
+        let levels = select(8.0, op.param0, op.param0 > 0.0);
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(vec3<f32>(quantize(luma, levels)), 1.0);
+    } else if opcode == OP_SOFT_CLIP {
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(vec3<f32>(soft_clip(luma * 2.0 - 1.0) * 0.5 + 0.5), 1.0);
+    } else if opcode == OP_SOLARIZE {
+        let threshold = select(0.5, op.param0, op.param0 > 0.0);
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(vec3<f32>(solarize(luma, threshold)), 1.0);
+    } else if opcode == OP_INVERTER {
+        result = vec4<f32>(vec3<f32>(1.0) - input_a.rgb, 1.0);
+    } else if opcode == OP_HUE_SHIFT {
+        let amount = op.param0 * 6.283185307;
+        result = vec4<f32>(rotate_hue_fast(input_a.rgb, amount), 1.0);
+    }
+    // Colorizers
+    else if opcode == OP_COLOR_SPECTRUM {
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(colorize_spectrum(luma), 1.0);
+    } else if opcode == OP_COLOR_THRESHOLD {
+        let levels = select(8.0, op.param0, op.param0 > 0.0);
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(colorize_threshold(luma, levels), 1.0);
+    } else if opcode == OP_COLOR_GRADIENT {
+        // Simple gradient from black to white through color
+        let luma = dot(input_a.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        result = vec4<f32>(vec3<f32>(luma), 1.0);
+    }
+    // Two-input processors
+    else if opcode == OP_LUMA_KEY {
+        let clip_black = select(0.2, op.param0, op.param0 > 0.0);
+        let clip_white = select(0.8, op.param1, op.param1 > 0.0);
+        let key = luma_key(input_a.rgb, clip_black, clip_white);
+        result = vec4<f32>(key_mix(input_b.rgb, input_a.rgb, key), 1.0);
+    } else if opcode == OP_MIXER {
+        let mix_amount = select(0.5, op.param0, op.param0 > 0.0);
+        result = vec4<f32>(mix(input_a.rgb, input_b.rgb, mix_amount), 1.0);
+    } else if opcode == OP_MULTIPLIER {
+        result = vec4<f32>(input_a.rgb * input_b.rgb, 1.0);
+    } else if opcode == OP_CHROMA_KEY {
+        // Chroma key with input_a as foreground, input_b as background
+        let key_color = vec3<f32>(0.0, 1.0, 0.0); // Green screen
+        let key = chroma_key(input_a.rgb, key_color, 0.3, 0.1);
+        result = vec4<f32>(key_mix(input_b.rgb, input_a.rgb, key), 1.0);
+    }
+    // Output nodes
+    else if opcode == OP_MAIN_OUT || opcode == OP_FEEDBACK_OUT {
+        result = input_a;
+    }
+
+    // Store result (clamped to 16 slots for performance)
+    if op.output_slot < 16u {
+        slots[op.output_slot] = result;
+    }
+}
+
+// Evaluate the entire node graph and return the main output color
+fn evaluate_graph(uv: vec2<f32>, time: f32) -> vec4<f32> {
+    // Note: slots are private and zero-initialized by default in WGSL
+    // We don't need to explicitly initialize them each frame
+
+    // Execute operations - use early exit pattern for better GPU performance
+    // The compiler can optimize this better than a dynamic loop
+    let op_count = graph_header.op_count;
+
+    if op_count > 0u { execute_op(graph_ops[0], uv, time); }
+    if op_count > 1u { execute_op(graph_ops[1], uv, time); }
+    if op_count > 2u { execute_op(graph_ops[2], uv, time); }
+    if op_count > 3u { execute_op(graph_ops[3], uv, time); }
+    if op_count > 4u { execute_op(graph_ops[4], uv, time); }
+    if op_count > 5u { execute_op(graph_ops[5], uv, time); }
+    if op_count > 6u { execute_op(graph_ops[6], uv, time); }
+    if op_count > 7u { execute_op(graph_ops[7], uv, time); }
+    if op_count > 8u { execute_op(graph_ops[8], uv, time); }
+    if op_count > 9u { execute_op(graph_ops[9], uv, time); }
+    if op_count > 10u { execute_op(graph_ops[10], uv, time); }
+    if op_count > 11u { execute_op(graph_ops[11], uv, time); }
+    if op_count > 12u { execute_op(graph_ops[12], uv, time); }
+    if op_count > 13u { execute_op(graph_ops[13], uv, time); }
+    if op_count > 14u { execute_op(graph_ops[14], uv, time); }
+    if op_count > 15u { execute_op(graph_ops[15], uv, time); }
+    // Support up to 16 ops for now - can extend if needed
+
+    // Return main output (clamped to 16 slots)
+    if graph_header.main_out_slot < 16u {
+        return slots[graph_header.main_out_slot];
+    }
+
+    // Fallback: return first slot
+    return slots[0];
+}
+
+// ============================================
 // FRAGMENT SHADER - Main synthesis
 // ============================================
 
@@ -620,100 +858,115 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         safe_uv = clamp(displaced_uv, vec2<f32>(0.0), vec2<f32>(1.0));
     }
 
-    // ========== VIDEO FEEDBACK ==========
+    var color: vec3<f32>;
 
-    let fb_color = sample_feedback(safe_uv);
+    // ========== NODE GRAPH EVALUATION ==========
+    // Use node graph when available, otherwise fall back to legacy hardcoded path
+    if graph_header.op_count > 0u {
+        // Node graph path - evaluate the compiled graph
+        let graph_result = evaluate_graph(safe_uv, time);
 
-    // ========== SIGNAL GENERATION ==========
+        // Get feedback for mixing
+        let fb_color = sample_feedback(safe_uv);
 
-    // Base signal from radial ramp
-    let radial = ramp_radial(safe_uv);
-
-    // Oscillators with UI-controlled parameters
-    let osc1 = osc_h(safe_uv, synth.osc1_freq, time * 0.5 + synth.osc1_phase);
-    let osc2 = osc_v(safe_uv, synth.osc2_freq, time * 0.3 + synth.osc2_phase);
-
-    // Noise based on selected type
-    var noise_val = 0.0;
-    if synth.noise_type < 0.5 {
-        noise_val = noise_white(safe_uv, time);
-    } else if synth.noise_type < 1.5 {
-        noise_val = noise_pink(safe_uv, time);
+        // Mix graph output with feedback
+        color = mix(graph_result.rgb, fb_color, feedback.mix);
     } else {
-        noise_val = noise_brown(safe_uv, time);
-    }
+        // Legacy hardcoded path (for backward compatibility)
 
-    // Shape generation based on UI selection
-    let shape_center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
-    var shape_val = 1.0;
-    if synth.shape_type > 0.5 && synth.shape_type < 1.5 {
-        // Circle
-        shape_val = shape_circle_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
-    } else if synth.shape_type > 1.5 && synth.shape_type < 2.5 {
-        // Rectangle
-        shape_val = shape_rect_soft(safe_uv, shape_center, vec2<f32>(synth.shape_size), synth.shape_softness);
-    } else if synth.shape_type > 2.5 && synth.shape_type < 3.5 {
-        // Diamond
-        shape_val = shape_diamond_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
-    } else if synth.shape_type > 3.5 && synth.shape_type < 4.5 {
-        // Star
-        shape_val = f32(shape_star(safe_uv, shape_center, synth.shape_size, synth.shape_size * 0.4, 5.0));
-    } else if synth.shape_type > 4.5 && synth.shape_type < 5.5 {
-        // Bars
-        shape_val = shape_bars_h(safe_uv, 8.0, 0.5);
-    } else if synth.shape_type > 5.5 {
-        // Checker
-        shape_val = shape_checker(safe_uv, 8.0);
-    }
+        // ========== VIDEO FEEDBACK ==========
+        let fb_color = sample_feedback(safe_uv);
 
-    // Mix signals
-    var signal = radial;
-    signal = mix(signal, osc1, 0.3);
-    signal = mix(signal, osc2, 0.2);
-    signal = mix(signal, noise_val * 0.5 + 0.5, synth.noise_mix);
-    signal = signal * mix(0.8, 1.0, shape_val);
+        // ========== SIGNAL GENERATION ==========
 
-    // ========== SIGNAL PROCESSING ==========
+        // Base signal from radial ramp
+        let radial = ramp_radial(safe_uv);
 
-    // Apply wave folding
-    let folded = fold(signal, 2.0 + sin(time * 0.7));
+        // Oscillators with UI-controlled parameters
+        let osc1 = osc_h(safe_uv, synth.osc1_freq, time * 0.5 + synth.osc1_phase);
+        let osc2 = osc_v(safe_uv, synth.osc2_freq, time * 0.3 + synth.osc2_phase);
 
-    // Quantize with UI-controlled levels
-    let quantized = quantize(folded, synth.colorizer_levels);
-
-    // Mix processed signals
-    var processed = mix(folded, quantized, 0.5);
-
-    // ========== COLORIZATION ==========
-
-    var new_color: vec3<f32>;
-    if synth.colorizer_type < 0.5 {
-        // Spectrum
-        new_color = colorize_spectrum(processed);
-    } else if synth.colorizer_type < 1.5 {
-        // Threshold
-        new_color = colorize_threshold(processed, synth.colorizer_levels);
-    } else {
-        // Grayscale
-        new_color = vec3<f32>(processed);
-    }
-
-    // ========== LUMA KEY ==========
-
-    if synth.key_enabled > 0.5 {
-        var key = luma_key(new_color, synth.key_clip_black, synth.key_clip_white);
-        if synth.key_invert > 0.5 {
-            key = 1.0 - key;
+        // Noise based on selected type
+        var noise_val = 0.0;
+        if synth.noise_type < 0.5 {
+            noise_val = noise_white(safe_uv, time);
+        } else if synth.noise_type < 1.5 {
+            noise_val = noise_pink(safe_uv, time);
+        } else {
+            noise_val = noise_brown(safe_uv, time);
         }
-        // Use key to mix with feedback
-        new_color = key_mix(fb_color, new_color, key);
+
+        // Shape generation based on UI selection
+        let shape_center = vec2<f32>(0.5 + sin(time * 0.4) * 0.1, 0.5 + cos(time * 0.3) * 0.1);
+        var shape_val = 1.0;
+        if synth.shape_type > 0.5 && synth.shape_type < 1.5 {
+            // Circle
+            shape_val = shape_circle_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
+        } else if synth.shape_type > 1.5 && synth.shape_type < 2.5 {
+            // Rectangle
+            shape_val = shape_rect_soft(safe_uv, shape_center, vec2<f32>(synth.shape_size), synth.shape_softness);
+        } else if synth.shape_type > 2.5 && synth.shape_type < 3.5 {
+            // Diamond
+            shape_val = shape_diamond_soft(safe_uv, shape_center, synth.shape_size, synth.shape_softness);
+        } else if synth.shape_type > 3.5 && synth.shape_type < 4.5 {
+            // Star
+            shape_val = f32(shape_star(safe_uv, shape_center, synth.shape_size, synth.shape_size * 0.4, 5.0));
+        } else if synth.shape_type > 4.5 && synth.shape_type < 5.5 {
+            // Bars
+            shape_val = shape_bars_h(safe_uv, 8.0, 0.5);
+        } else if synth.shape_type > 5.5 {
+            // Checker
+            shape_val = shape_checker(safe_uv, 8.0);
+        }
+
+        // Mix signals
+        var signal = radial;
+        signal = mix(signal, osc1, 0.3);
+        signal = mix(signal, osc2, 0.2);
+        signal = mix(signal, noise_val * 0.5 + 0.5, synth.noise_mix);
+        signal = signal * mix(0.8, 1.0, shape_val);
+
+        // ========== SIGNAL PROCESSING ==========
+
+        // Apply wave folding
+        let folded = fold(signal, 2.0 + sin(time * 0.7));
+
+        // Quantize with UI-controlled levels
+        let quantized = quantize(folded, synth.colorizer_levels);
+
+        // Mix processed signals
+        var processed = mix(folded, quantized, 0.5);
+
+        // ========== COLORIZATION ==========
+
+        var new_color: vec3<f32>;
+        if synth.colorizer_type < 0.5 {
+            // Spectrum
+            new_color = colorize_spectrum(processed);
+        } else if synth.colorizer_type < 1.5 {
+            // Threshold
+            new_color = colorize_threshold(processed, synth.colorizer_levels);
+        } else {
+            // Grayscale
+            new_color = vec3<f32>(processed);
+        }
+
+        // ========== LUMA KEY ==========
+
+        if synth.key_enabled > 0.5 {
+            var key = luma_key(new_color, synth.key_clip_black, synth.key_clip_white);
+            if synth.key_invert > 0.5 {
+                key = 1.0 - key;
+            }
+            // Use key to mix with feedback
+            new_color = key_mix(fb_color, new_color, key);
+        }
+
+        // ========== MIX WITH FEEDBACK ==========
+        color = mix(new_color, fb_color, feedback.mix);
     }
 
-    // ========== MIX WITH FEEDBACK ==========
-
-    var color = mix(new_color, fb_color, feedback.mix);
-
-    // ========== CRT EFFECTS ==========
+    // ========== CRT EFFECTS (applied to both paths) ==========
 
     // Apply scanlines (from UI)
     let scan = scanlines(uv, synth.scanline_intensity);

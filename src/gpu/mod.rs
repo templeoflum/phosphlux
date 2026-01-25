@@ -4,3 +4,4 @@
 //! in parallel, just like voltage flows through analog circuits simultaneously.
 
 pub mod renderer;
+pub mod graph_compiler;

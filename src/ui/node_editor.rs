@@ -96,6 +96,8 @@ pub struct NodeEditor {
     hovered_socket: Option<(u32, bool, usize)>,
     /// Hovered connection index (for click-to-delete)
     hovered_connection: Option<usize>,
+    /// Flag set when the graph has been modified (for GPU update)
+    pub graph_modified: bool,
 }
 
 impl Default for NodeEditor {
@@ -113,6 +115,7 @@ impl Default for NodeEditor {
             hovered_node: None,
             hovered_socket: None,
             hovered_connection: None,
+            graph_modified: false,
         }
     }
 }
@@ -435,6 +438,7 @@ fn handle_canvas_input(
                     if node.node_type != NodeType::MainOut && node.node_type != NodeType::FeedbackOut {
                         patch.remove_node(node_id);
                         editor.selected_node = None;
+                        editor.graph_modified = true;
                     }
                 }
             }
@@ -517,6 +521,7 @@ fn handle_canvas_input(
                     ));
                     // Remove the connection (we're unplugging it)
                     patch.disconnect(to_node, to_input);
+                    editor.graph_modified = true;
                     started_interaction = true;
                 }
             }
@@ -598,6 +603,7 @@ fn handle_canvas_input(
                 // Connect if we found a target
                 if let Some((to_node, to_input)) = target {
                     patch.connect(from_node, from_output, to_node, to_input);
+                    editor.graph_modified = true;
                 }
             }
 
@@ -613,6 +619,7 @@ fn handle_canvas_input(
             if let Some(conn_idx) = editor.hovered_connection {
                 if conn_idx < patch.connections.len() {
                     patch.connections.remove(conn_idx);
+                    editor.graph_modified = true;
                     return;
                 }
             }
@@ -625,6 +632,7 @@ fn handle_canvas_input(
                     if node.node_type != NodeType::MainOut && node.node_type != NodeType::FeedbackOut {
                         let id_to_remove = node.id;
                         patch.remove_node(id_to_remove);
+                        editor.graph_modified = true;
                         if editor.selected_node == Some(id_to_remove) {
                             editor.selected_node = None;
                         }
@@ -796,7 +804,7 @@ fn draw_node(
 }
 
 /// Render the node palette (left panel)
-pub fn render_node_palette(ui: &mut egui::Ui, patch: &mut SignalPatch) {
+pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut SignalPatch) {
     ui.heading("Nodes");
     ui.separator();
 
@@ -811,6 +819,7 @@ pub fn render_node_palette(ui: &mut egui::Ui, patch: &mut SignalPatch) {
                     if ui.button(node_type.display_name()).clicked() {
                         // Add node at a default position
                         patch.add_node(node_type, 200.0, 200.0);
+                        editor.graph_modified = true;
                     }
                 }
             });
@@ -840,7 +849,7 @@ fn get_node_types_for_category(category: &str) -> Vec<NodeType> {
 }
 
 /// Render the inspector panel (shows selected node properties)
-pub fn render_inspector(ui: &mut egui::Ui, editor: &NodeEditor, patch: &mut SignalPatch) {
+pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut SignalPatch) {
     ui.heading("Inspector");
     ui.separator();
 
@@ -871,6 +880,7 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &NodeEditor, patch: &mut Sign
                     if ui.add(egui::Slider::new(&mut val, range).text(&key)).changed() {
                         if let Some(node) = patch.get_node_mut(node_id) {
                             node.params.insert(key, val);
+                            editor.graph_modified = true;
                         }
                     }
                 }
@@ -895,6 +905,7 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &NodeEditor, patch: &mut Sign
                                 ui.label(from_node.node_type.display_name());
                                 if ui.small_button("×").on_hover_text("Disconnect").clicked() {
                                     patch.disconnect(node_id, input_idx);
+                                    editor.graph_modified = true;
                                 }
                             }
                         } else {

@@ -329,36 +329,37 @@ Multiple operations required careful two-pass approaches:
 - Preset system (5 presets)
 - **Visual node editor with full connection management**
 - **Aspect ratio locked preview**
+- **GPU-compiled node graph execution**
+- **Real-time parameter adjustment**
 
 ### Architecture Strengths
 - Clean separation: timing (CPU) → uniforms → shaders (GPU)
 - Ping-pong feedback buffers for stable recursion
 - Type-safe parameter binding via uniform structs
-- Node graph data structures ready (`SignalPatch`, `SignalNode`)
-- **Visual node editor decoupled from rendering (ready for GPU compilation)**
+- **Graph compiler with topological sort for correct execution order**
+- **Storage buffer pipeline for dynamic operation dispatch**
 
 ---
 
 ## Roadmap
 
-### Immediate: GPU Signal Routing (Phase 3)
-The node graph is visual — now make it functional:
+### ✅ COMPLETE: GPU Signal Routing (Phase 3)
+The node graph now controls real-time GPU rendering:
 - ✅ Visual node editor with pan/zoom canvas
 - ✅ Draggable nodes with input/output sockets
 - ✅ Bezier curve connections
-- ⏳ **Compile node graph to GPU operations**
+- ✅ **Graph compiler with topological sort**
+- ✅ **GPU storage buffer for operations**
+- ✅ **Real-time parameter updates**
 - ⏳ Multiple signal channels (Main, Feedback, Key, Aux)
 
-**GPU Compilation Strategy:**
-1. Topological sort of node graph
-2. Generate operation sequence (which nodes feed which)
-3. Pack into uniform buffer or storage buffer
-4. Shader interprets operations at runtime
-
-**Alternative: Shader Generation:**
-- Compile node graph directly to WGSL code
-- Regenerate shader when graph changes
-- Maximum performance, compile-time optimization
+**Implementation Details:**
+- `GraphCompiler` performs topological sort (Kahn's algorithm)
+- Operations packed into `GraphOp` structs (32 bytes each)
+- Header uniform + ops storage buffer (bind group 2)
+- Shader uses unrolled execution (16 ops max) for GPU performance
+- Slots reduced from 64→16 to minimize per-fragment memory
+- Legacy hardcoded path preserved when no graph present
 
 ### Future: True Rutt/Etra Implementation
 The current "Luminance Displacement" effect is UV-based distortion. True Rutt/Etra:
@@ -446,7 +447,7 @@ This allows single `queue.write_buffer()` call per frame.
 - **v0.3**: egui control panel integration
 - **v0.4**: Paned layout redesign + renamed to **Phosphlux**
 - **v0.5**: Visual node editor with full UX
-- **v0.6**: GPU signal routing (in progress)
+- **v0.6**: GPU signal routing — node graph compiles to GPU operations
 
 ---
 
@@ -455,8 +456,9 @@ This allows single `queue.write_buffer()` call per frame.
 | File | Purpose |
 |------|---------|
 | `src/main.rs` | Application entry, event loop, 4-panel layout |
-| `src/gpu/renderer.rs` | wgpu setup, shader pipeline, feedback buffers |
-| `src/shaders/main.wgsl` | Combined synthesis shader |
+| `src/gpu/renderer.rs` | wgpu setup, shader pipeline, feedback buffers, graph upload |
+| `src/gpu/graph_compiler.rs` | Topological sort, node→GPU operation compilation |
+| `src/shaders/main.wgsl` | Combined synthesis shader + graph evaluation |
 | `src/core/timing.rs` | NTSC/PAL sync generation |
 | `src/ui/controls.rs` | Parameter structures (SynthParams) |
 | `src/ui/patch.rs` | Node graph data (SignalPatch, SignalNode, Connection) |

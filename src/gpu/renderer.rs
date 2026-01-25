@@ -10,6 +10,8 @@ use winit::window::Window;
 use winit::dpi::PhysicalSize;
 
 use crate::core::timing::TimingUniforms;
+use crate::gpu::graph_compiler::{CompiledGraph, CompiledGraphHeader, GraphOp, MAX_OPS};
+use crate::ui::patch::SignalPatch;
 
 /// Vertex for fullscreen quad
 #[repr(C)]
@@ -167,6 +169,13 @@ pub struct Renderer {
 
     pub feedback: FeedbackUniforms,
     pub synth: SynthUniforms,
+
+    // Node graph compilation
+    graph_header_buffer: wgpu::Buffer,
+    graph_ops_buffer: wgpu::Buffer,
+    graph_bind_group_layout: wgpu::BindGroupLayout,
+    graph_bind_group: wgpu::BindGroup,
+    compiled_graph: CompiledGraph,
 }
 
 impl Renderer {
@@ -349,6 +358,63 @@ impl Renderer {
         let (feedback_textures, feedback_views, feedback_bind_groups) =
             Self::create_feedback_textures(&device, &feedback_bind_group_layout, &feedback_sampler, size.width.max(1), size.height.max(1), surface_format);
 
+        // Create graph buffers for node-based synthesis
+        let compiled_graph = CompiledGraph::default_fallback();
+        let graph_header_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Header Buffer"),
+            contents: bytemuck::cast_slice(&[compiled_graph.header]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let graph_ops_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Ops Buffer"),
+            contents: bytemuck::cast_slice(&compiled_graph.ops),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Graph bind group layout (group 2)
+        let graph_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Graph Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let graph_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Graph Bind Group"),
+            layout: &graph_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: graph_header_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: graph_ops_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         // Create shader module
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Video Synth Shader"),
@@ -358,7 +424,7 @@ impl Renderer {
         // Pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&timing_bind_group_layout, &feedback_bind_group_layout],
+            bind_group_layouts: &[&timing_bind_group_layout, &feedback_bind_group_layout, &graph_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -452,6 +518,11 @@ impl Renderer {
             output_size,
             feedback,
             synth,
+            graph_header_buffer,
+            graph_ops_buffer,
+            graph_bind_group_layout,
+            graph_bind_group,
+            compiled_graph,
         }
     }
 
@@ -467,7 +538,9 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -495,6 +568,7 @@ impl Renderer {
             format, // Use the same format as the surface
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         };
@@ -554,6 +628,27 @@ impl Renderer {
     /// Get reference to queue (for egui)
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
+    }
+
+    /// Compile and upload a new node graph to the GPU
+    pub fn update_graph(&mut self, patch: &SignalPatch) {
+        use crate::gpu::graph_compiler::GraphCompiler;
+
+        self.compiled_graph = GraphCompiler::compile(patch);
+
+        // Upload header
+        self.queue.write_buffer(
+            &self.graph_header_buffer,
+            0,
+            bytemuck::cast_slice(&[self.compiled_graph.header]),
+        );
+
+        // Upload operations
+        self.queue.write_buffer(
+            &self.graph_ops_buffer,
+            0,
+            bytemuck::cast_slice(&self.compiled_graph.ops),
+        );
     }
 
     /// Register output texture with egui for display in UI
@@ -631,12 +726,37 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
 
-        // Pass 2: Copy to output texture
-        {
+        // Pass 2: Copy feedback texture to output texture
+        // Use GPU texture copy when sizes match (fast path), otherwise re-render (slow path)
+        let feedback_size = (self.size.width, self.size.height);
+        if feedback_size == self.output_size {
+            // Fast path: direct GPU copy (no shader invocation)
+            encoder.copy_texture_to_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.feedback_textures[write_index],
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyTexture {
+                    texture: &self.output_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: self.output_size.0,
+                    height: self.output_size.1,
+                    depth_or_array_layers: 1,
+                },
+            );
+        } else {
+            // Slow path: re-render when sizes differ (needed for aspect ratio scaling)
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Output Texture Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -655,6 +775,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
@@ -727,6 +848,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
@@ -751,6 +873,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
@@ -813,6 +936,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[read_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
@@ -837,6 +961,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.timing_bind_group, &[]);
             render_pass.set_bind_group(1, &self.feedback_bind_groups[write_index], &[]);
+            render_pass.set_bind_group(2, &self.graph_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }

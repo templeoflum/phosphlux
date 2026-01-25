@@ -45,6 +45,7 @@ struct App {
     // Node graph
     patch: SignalPatch,
     node_editor: NodeEditor,
+    graph_needs_update: bool,
 
     // Track preview size for texture resize
     last_preview_size: (u32, u32),
@@ -63,6 +64,7 @@ impl App {
             control_panel: ControlPanel::new(),
             patch: SignalPatch::default_patch(),
             node_editor: NodeEditor::new(),
+            graph_needs_update: true,  // Compile initial graph
             last_preview_size: (320, 240),
         }
     }
@@ -210,6 +212,14 @@ impl App {
     fn render_frame(&mut self, event_loop: &ActiveEventLoop) {
         let timing = self.sync_gen.get_timing();
 
+        // Update graph if patch has changed
+        if self.graph_needs_update {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.update_graph(&self.patch);
+            }
+            self.graph_needs_update = false;
+        }
+
         // Render synthesizer to texture
         if let Some(renderer) = &mut self.renderer {
             renderer.render_to_texture(timing);
@@ -238,7 +248,7 @@ impl App {
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
 
             self.egui_ctx.run(raw_input, |ctx| {
-                render_node_editor_layout(
+                let graph_changed = render_node_editor_layout(
                     ctx,
                     control_panel_params,
                     patch,
@@ -247,8 +257,22 @@ impl App {
                     renderer,
                     egui_renderer,
                 );
+                // Store the graph_changed flag for later access
+                // (egui context run doesn't return values cleanly, so we use the editor flag)
+                if graph_changed {
+                    node_editor.graph_modified = true;
+                }
             })
         };
+
+        // Check if graph needs update (from node editor interactions)
+        if self.node_editor.graph_modified {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.update_graph(&self.patch);
+            }
+            self.node_editor.graph_modified = false;
+            self.graph_needs_update = false;  // Clear this too
+        }
 
         // Handle platform output
         if let Some(egui_state) = &mut self.egui_state {
@@ -292,17 +316,20 @@ fn render_node_editor_layout(
     last_preview_size: &mut (u32, u32),
     renderer: &mut Renderer,
     egui_renderer: &mut egui_wgpu::Renderer,
-) {
+) -> bool {
+    let mut graph_changed = false;
     // Top menu bar
     egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("New Patch").clicked() {
                     *patch = SignalPatch::new();
+                    graph_changed = true;
                     ui.close_menu();
                 }
                 if ui.button("Default Patch").clicked() {
                     *patch = SignalPatch::default_patch();
+                    graph_changed = true;
                     ui.close_menu();
                 }
                 ui.separator();
@@ -378,7 +405,7 @@ fn render_node_editor_layout(
         .default_width(150.0)
         .width_range(120.0..=250.0)
         .show(ctx, |ui| {
-            render_node_palette(ui, patch);
+            render_node_palette(ui, node_editor, patch);
         });
 
     // Right panel - Preview + Inspector (stacked vertically)
@@ -454,6 +481,9 @@ fn render_node_editor_layout(
         .show(ctx, |ui| {
             render_node_canvas(ui, node_editor, patch);
         });
+
+    // Return whether graph was modified (combine with File menu changes)
+    graph_changed || node_editor.graph_modified
 }
 
 /// Compact parameter view for the inspector panel
