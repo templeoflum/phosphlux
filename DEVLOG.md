@@ -1,4 +1,6 @@
-# Development Log: Analog Video Synthesizer
+# Development Log: Phosphlux
+
+*phosphor + flux — flowing light substance*
 
 A chronicle of building a real-time GPU-accelerated analog video synthesizer emulation.
 
@@ -8,7 +10,17 @@ A chronicle of building a real-time GPU-accelerated analog video synthesizer emu
 
 **Goal**: Create an authentic digital emulation of classic analog video synthesis hardware, from 1960s oscilloscope art through contemporary Eurorack modular video systems.
 
-**Key Achievement**: 2 FPS → 60 FPS - A 30x performance improvement by transitioning from TypeScript/Canvas to Rust/wgpu.
+**Key Achievement**: 2 FPS → 60 FPS — A 30x performance improvement by transitioning from TypeScript/Canvas to Rust/wgpu.
+
+---
+
+## The Name
+
+**Phosphlux** combines two essential concepts:
+- **Phosphor**: The luminescent coating inside CRT displays that glows when struck by electron beams — the literal source of light in analog video
+- **Flux**: Continuous flow, change, transformation — capturing the dynamic nature of video synthesis
+
+Together they describe the essence of what we're building: *light as a flowing, transforming substance*.
 
 ---
 
@@ -16,7 +28,7 @@ A chronicle of building a real-time GPU-accelerated analog video synthesizer emu
 
 ### The Technical Reference Document
 
-The project began with exhaustive research into the history and physics of analog video synthesis. The result was `VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md` - a comprehensive 600-line technical document covering:
+The project began with exhaustive research into the history and physics of analog video synthesis. The result was `VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md` — a comprehensive 600-line technical document covering:
 
 - **CRT Physics**: Electron beam behavior, P22 phosphor persistence with multi-stage decay, beam bloom from space charge effects
 - **NTSC/PAL Standards**: 525/625 line systems, color subcarrier encoding (3.579545 MHz), quadrature amplitude modulation
@@ -28,7 +40,7 @@ The project began with exhaustive research into the history and physics of analo
   - **Jones Colorizer** (1974): Diode/layered mixing without color encoder
 - **Implementation Priorities**: Categorized techniques into Critical/High/Medium priority with specific algorithms
 
-This document served as the "sketch" - a detailed blueprint for what needed to be built.
+This document served as the "sketch" — a detailed blueprint for what needed to be built.
 
 ---
 
@@ -56,7 +68,7 @@ __archive_typescript_reference/
 - Effects: Video feedback, frame delay, Rutt/Etra displacement, wobbulator
 - Mixing: Luminance keyer, chroma keyer, four-quadrant multiplier
 
-**The Problem**: Performance was abysmal. The TypeScript implementation ran at approximately **2 FPS** for 720x480 resolution. Video synthesis requires real-time performance - latency breaks the feedback loop that's essential to the art form.
+**The Problem**: Performance was abysmal. The TypeScript implementation ran at approximately **2 FPS** for 720x480 resolution. Video synthesis requires real-time performance — latency breaks the feedback loop that's essential to the art form.
 
 ### Lessons Learned
 
@@ -101,7 +113,7 @@ All video processing happens in WGSL shaders:
 
 1. **Composite Shader** (`composite.wgsl`): Generates base imagery
    - Shape generators (circle, rectangle, diamond, star, bars, checker)
-   - Noise generation (white, pink, brown - GPU random with filtering)
+   - Noise generation (white, pink, brown — GPU random with filtering)
    - Oscillator patterns
    - Colorization (spectrum, threshold, grayscale)
    - Luma keying
@@ -352,7 +364,7 @@ This allows single `queue.write_buffer()` call per frame.
 - **v0.1**: TypeScript prototype (2 FPS)
 - **v0.2**: Rust + wgpu rewrite (60 FPS)
 - **v0.3**: egui control panel integration
-- **v0.4**: Paned layout redesign (current)
+- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
 - **v0.5**: Node-based compositor (planned)
 
 ---

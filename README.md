@@ -1,4 +1,6 @@
-# Analog Video Synthesizer
+# Phosphlux
+
+*phosphor + flux — flowing light substance*
 
 A real-time GPU-accelerated emulation of classic analog video synthesis hardware, built in Rust with wgpu.
 
@@ -8,7 +10,7 @@ A real-time GPU-accelerated emulation of classic analog video synthesis hardware
 
 ## Overview
 
-This project authentically recreates the complete history of electronic image-making - from 1960s oscilloscope art through contemporary Eurorack modular video systems. Rather than simple approximations, we model the physics and circuits that defined analog video synthesis.
+Phosphlux authentically recreates the complete history of electronic image-making — from 1960s oscilloscope art through contemporary Eurorack modular video systems. Rather than simple approximations, we model the physics and circuits that defined analog video synthesis.
 
 **Performance**: 60 FPS real-time rendering with full feedback effects.
 
@@ -56,8 +58,8 @@ This project authentically recreates the complete history of electronic image-ma
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/analog-video-synth.git
-cd analog-video-synth
+git clone https://github.com/yourusername/phosphlux.git
+cd phosphlux
 
 # Build and run
 cargo run --release
@@ -163,6 +165,10 @@ The transition from TypeScript prototype to Rust achieved a **30x performance im
 - Uniform buffers minimize CPU-GPU data transfer
 - Ping-pong framebuffers enable stable feedback without read-after-write hazards
 - egui's immediate mode minimizes UI overhead
+
+## The Name
+
+**Phosphlux** combines *phosphor* (the luminescent coating inside CRT displays that glows when struck by electron beams) with *flux* (continuous flow and change). Together they capture the essence of analog video synthesis: light as a flowing, transforming substance.
 
 ## Contributing
 

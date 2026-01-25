@@ -1,6 +1,8 @@
-//! Analog Video Synthesizer
+//! Phosphlux - Real-time GPU Analog Video Synthesizer
 //!
-//! Real-time GPU-accelerated emulation of classic analog video synthesis hardware.
+//! *phosphor + flux — flowing light substance*
+//!
+//! GPU-accelerated emulation of classic analog video synthesis hardware.
 //! Architecture mirrors actual hardware signal flow:
 //! - Sync generator provides master timing (NTSC/PAL)
 //! - Modules process signals in parallel on GPU (like analog circuits)
@@ -79,7 +81,7 @@ impl ApplicationHandler for App {
         if self.window.is_none() {
             // Create maximized window
             let window_attributes = Window::default_attributes()
-                .with_title("Analog Video Synthesizer")
+                .with_title("Phosphlux")
                 .with_maximized(true);
 
             let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
@@ -582,7 +584,7 @@ fn sync_synth_params(params: &SynthParams, synth: &mut SynthUniforms) {
 
 fn main() {
     env_logger::init();
-    log::info!("Starting Analog Video Synthesizer");
+    log::info!("Starting Phosphlux");
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll); // Continuous rendering

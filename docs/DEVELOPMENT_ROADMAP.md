@@ -1,6 +1,6 @@
 # Development Roadmap
 
-This document outlines the phased development plan for the Analog Video Synthesizer project.
+This document outlines the phased development plan for **Phosphlux** — a real-time GPU analog video synthesizer.
 
 ## Guiding Principles
 
