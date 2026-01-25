@@ -1,7 +1,6 @@
 //! GPU renderer using wgpu
 
 use anyhow::{anyhow, Result};
-use image::GenericImageView;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::Instant;
@@ -195,7 +194,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Create output texture for readback
+        // Create output texture for readback (use same format as surface)
         let output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Output Texture"),
             size: wgpu::Extent3d {
@@ -206,13 +205,14 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: surface_format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
-        // Create output buffer for CPU readback
-        let buffer_size = (config.width * config.height * 4) as u64;
+        // Create output buffer for CPU readback (with 256-byte row alignment)
+        let padded_bytes_per_row = ((config.width * 4) + 255) & !255;
+        let buffer_size = (padded_bytes_per_row * config.height) as u64;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
             size: buffer_size,
@@ -256,7 +256,7 @@ impl Renderer {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
 
-            // Recreate output texture
+            // Recreate output texture (use same format as surface)
             self.output_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Output Texture"),
                 size: wgpu::Extent3d {
@@ -267,12 +267,13 @@ impl Renderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: self.config.format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
 
-            let buffer_size = (width * height * 4) as u64;
+            let padded_bytes_per_row = ((width * 4) + 255) & !255;
+            let buffer_size = (padded_bytes_per_row * height) as u64;
             self.output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Output Buffer"),
                 size: buffer_size,
@@ -472,6 +473,54 @@ impl Renderer {
         }
     }
 
+    fn capture_output(&mut self) {
+        let width = self.config.width;
+        let height = self.config.height;
+        let bytes_per_row = width * 4;
+        let padded_bytes_per_row = (bytes_per_row + 255) & !255;
+        let is_bgra = matches!(self.config.format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+
+        // Map buffer for reading
+        let buffer_slice = self.output_buffer.slice(..);
+        buffer_slice.map_async(wgpu::MapMode::Read, |_| {});
+        self.device.poll(wgpu::Maintain::Wait);
+
+        {
+            let data = buffer_slice.get_mapped_range();
+
+            // Remove padding and convert BGRA to RGBA if needed
+            let mut pixels: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
+            for row in 0..height {
+                let start = (row * padded_bytes_per_row) as usize;
+                for col in 0..width as usize {
+                    let idx = start + col * 4;
+                    if is_bgra {
+                        // BGRA -> RGBA
+                        pixels.push(data[idx + 2]); // R
+                        pixels.push(data[idx + 1]); // G
+                        pixels.push(data[idx]);     // B
+                        pixels.push(data[idx + 3]); // A
+                    } else {
+                        pixels.extend_from_slice(&data[idx..idx + 4]);
+                    }
+                }
+            }
+
+            // Create PNG
+            if let Some(img) = image::RgbaImage::from_raw(width, height, pixels) {
+                let mut png_bytes = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut png_bytes);
+                if img.write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
+                    let mut state = self.state.write();
+                    state.output_image = Some(png_bytes);
+                }
+            }
+        }
+
+        self.output_buffer.unmap();
+    }
+
     pub fn render(&mut self) -> Result<()> {
         let frame_start = Instant::now();
 
@@ -527,8 +576,72 @@ impl Renderer {
             render_pass.draw(0..3, 0..1);
         }
 
+        // Copy to output texture for screenshots
+        let output_view = self.output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create a second render pass to the output texture
+        {
+            let mut copy_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Copy Encoder"),
+            });
+
+            if let (Some(pipeline), Some(bind_group)) = (&self.pipeline, &self.bind_group) {
+                let mut render_pass = copy_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Output Capture Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &output_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+
+                render_pass.set_pipeline(pipeline);
+                render_pass.set_bind_group(0, bind_group, &[]);
+                render_pass.draw(0..3, 0..1);
+            }
+
+            // Copy output texture to buffer
+            let bytes_per_row = self.config.width * 4;
+            let padded_bytes_per_row = (bytes_per_row + 255) & !255; // Align to 256
+
+            copy_encoder.copy_texture_to_buffer(
+                wgpu::ImageCopyTexture {
+                    texture: &self.output_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyBuffer {
+                    buffer: &self.output_buffer,
+                    layout: wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(padded_bytes_per_row),
+                        rows_per_image: Some(self.config.height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: self.config.width,
+                    height: self.config.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+
+            self.queue.submit(std::iter::once(copy_encoder.finish()));
+        }
+
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        // Read back output for screenshot (every 10 frames to avoid overhead)
+        if self.frame_count % 10 == 0 {
+            self.capture_output();
+        }
 
         // Update metrics
         let frame_time = frame_start.elapsed().as_secs_f32() * 1000.0;
