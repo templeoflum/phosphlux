@@ -248,6 +248,72 @@ fn render_paned_layout_inner(
 
 ---
 
+## Phase 6: Visual Node Editor
+
+### The Vision
+Transform from parameter-based control to true node-based signal routing — like TouchDesigner, Nuke, or Blender's shader editor.
+
+### Implementation
+
+**New Layout (4-panel design):**
+```
+┌──────────┬────────────────────────────────────┬─────────────┐
+│          │                                    │  PREVIEW    │
+│  NODE    │                                    │   [4:3 ▼]   │
+│ PALETTE  │       NODE GRAPH EDITOR            ├─────────────┤
+│          │                                    │  INSPECTOR  │
+│          │                                    │             │
+└──────────┴────────────────────────────────────┴─────────────┘
+```
+
+**Node Editor Features:**
+- Pan/zoom canvas with grid background
+- Visual nodes with category-colored headers
+- Bezier curve connections between sockets
+- Immediate input response (no drag threshold lag)
+
+**Connection Management (major UX focus):**
+- Drag from output socket → input socket to connect
+- Drag from connected input to **unplug and reconnect** elsewhere
+- Right-click on cables to delete connections
+- Hover highlighting on nodes, sockets, and cables
+- Inspector panel shows connections with disconnect buttons
+
+**Keyboard Shortcuts:**
+- `Del`/`Backspace` — Delete selected node
+- `F` — Frame/center on selected node
+- `Home` — Reset view (pan and zoom)
+
+**Aspect Ratio Lock:**
+- Preview supports locked aspect ratios: Free, 1:1, 4:3, 16:9, 3:4, 9:16, 2.35:1
+- Ensures graphics render faithfully without warping
+- Dropdown selector in preview header
+
+**Node Categories:**
+- **Sources**: Ramps (H/V/Radial), Oscillators, Noise (White/Pink/Brown), Shapes, Feedback Input
+- **Waveshapers**: Folder, Quantizer, Soft Clip, Solarize, Inverter
+- **Mixing**: Luma Key, Chroma Key, Mixer, Multiplier
+- **Color**: Hue Shift
+- **Colorizers**: Spectrum, Threshold, Gradient
+- **Outputs**: Main Out, Feedback Out
+
+### Technical Challenges Solved
+
+**Immediate Node Interaction:**
+Original implementation used egui's `drag_started()` which has a minimum drag threshold — users had to "click and hold" before nodes responded. Solution: switched to raw pointer state (`primary_pressed`/`primary_down`/`primary_released`) for immediate response.
+
+**Connection Unplugging:**
+Implemented `ConnectionDragMode` enum to distinguish between:
+- `FromOutput` — Creating new connection
+- `FromInput` — Unplugging existing connection (stores original source for reconnection)
+
+**Borrow Checker Conflicts:**
+Multiple operations required careful two-pass approaches:
+1. First pass: collect information (immutable borrow)
+2. Second pass: perform mutation (mutable borrow)
+
+---
+
 ## Current State
 
 ### What Works
@@ -261,24 +327,38 @@ fn render_paned_layout_inner(
 - CRT emulation (scanlines, curvature, vignette)
 - Professional paned layout UI
 - Preset system (5 presets)
+- **Visual node editor with full connection management**
+- **Aspect ratio locked preview**
 
 ### Architecture Strengths
 - Clean separation: timing (CPU) → uniforms → shaders (GPU)
 - Ping-pong feedback buffers for stable recursion
 - Type-safe parameter binding via uniform structs
 - Node graph data structures ready (`SignalPatch`, `SignalNode`)
+- **Visual node editor decoupled from rendering (ready for GPU compilation)**
 
 ---
 
 ## Roadmap
 
-### Immediate: Node-Based Compositor
-Transform the synthesizer into a visual signal routing system like TouchDesigner/Nuke:
-- Visual node editor with pan/zoom canvas
-- Draggable nodes with input/output sockets
-- Bezier curve connections
-- Compile node graph to GPU operations
-- Multiple signal channels (Main, Feedback, Key, Aux)
+### Immediate: GPU Signal Routing (Phase 3)
+The node graph is visual — now make it functional:
+- ✅ Visual node editor with pan/zoom canvas
+- ✅ Draggable nodes with input/output sockets
+- ✅ Bezier curve connections
+- ⏳ **Compile node graph to GPU operations**
+- ⏳ Multiple signal channels (Main, Feedback, Key, Aux)
+
+**GPU Compilation Strategy:**
+1. Topological sort of node graph
+2. Generate operation sequence (which nodes feed which)
+3. Pack into uniform buffer or storage buffer
+4. Shader interprets operations at runtime
+
+**Alternative: Shader Generation:**
+- Compile node graph directly to WGSL code
+- Regenerate shader when graph changes
+- Maximum performance, compile-time optimization
 
 ### Future: True Rutt/Etra Implementation
 The current "Luminance Displacement" effect is UV-based distortion. True Rutt/Etra:
@@ -365,7 +445,23 @@ This allows single `queue.write_buffer()` call per frame.
 - **v0.2**: Rust + wgpu rewrite (60 FPS)
 - **v0.3**: egui control panel integration
 - **v0.4**: Paned layout redesign + renamed to **Phosphlux**
-- **v0.5**: Node-based compositor (planned)
+- **v0.5**: Visual node editor with full UX
+- **v0.6**: GPU signal routing (in progress)
+
+---
+
+## Files Reference (Updated)
+
+| File | Purpose |
+|------|---------|
+| `src/main.rs` | Application entry, event loop, 4-panel layout |
+| `src/gpu/renderer.rs` | wgpu setup, shader pipeline, feedback buffers |
+| `src/shaders/main.wgsl` | Combined synthesis shader |
+| `src/core/timing.rs` | NTSC/PAL sync generation |
+| `src/ui/controls.rs` | Parameter structures (SynthParams) |
+| `src/ui/patch.rs` | Node graph data (SignalPatch, SignalNode, Connection) |
+| `src/ui/node_editor.rs` | Visual node editor (NodeEditor, AspectRatio) |
+| `docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md` | Research document |
 
 ---
 

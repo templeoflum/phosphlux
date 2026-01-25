@@ -387,60 +387,51 @@ fn render_node_editor_layout(
         .default_width(280.0)
         .width_range(200.0..=400.0)
         .show(ctx, |ui| {
-            // Top section: Preview
-            let available_height = ui.available_height();
-            let preview_height = (available_height * 0.45).max(150.0);
-
-            egui::Frame::dark_canvas(&ui.style())
-                .show(ui, |ui| {
-                    ui.set_min_height(preview_height);
-                    ui.set_max_height(preview_height);
-
-                    // Preview header with aspect ratio selector
-                    ui.horizontal(|ui| {
-                        ui.heading("Preview");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            egui::ComboBox::from_id_salt("aspect_ratio")
-                                .selected_text(node_editor.aspect_ratio.display_name())
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Free, AspectRatio::Free.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Square, AspectRatio::Square.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Standard, AspectRatio::Standard.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Wide, AspectRatio::Wide.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait43, AspectRatio::Portrait43.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait169, AspectRatio::Portrait169.display_name());
-                                    ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Cinemascope, AspectRatio::Cinemascope.display_name());
-                                });
+            // Preview header with aspect ratio selector
+            ui.horizontal(|ui| {
+                ui.heading("Preview");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    egui::ComboBox::from_id_salt("aspect_ratio")
+                        .selected_text(node_editor.aspect_ratio.display_name())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Free, AspectRatio::Free.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Square, AspectRatio::Square.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Standard, AspectRatio::Standard.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Wide, AspectRatio::Wide.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait43, AspectRatio::Portrait43.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Portrait169, AspectRatio::Portrait169.display_name());
+                            ui.selectable_value(&mut node_editor.aspect_ratio, AspectRatio::Cinemascope, AspectRatio::Cinemascope.display_name());
                         });
-                    });
-
-                    // Get available size for preview
-                    let available = ui.available_size();
-                    let content_area = egui::Vec2::new(available.x.max(64.0), (available.y - 8.0).max(64.0));
-
-                    // Calculate size with aspect ratio lock
-                    let preview_size = node_editor.aspect_ratio.fit_size(content_area);
-                    let preview_width = preview_size.x as u32;
-                    let preview_h = preview_size.y as u32;
-
-                    // Resize output texture if needed
-                    if (preview_width, preview_h) != *last_preview_size {
-                        renderer.resize_output(preview_width, preview_h, egui_renderer);
-                        *last_preview_size = (preview_width, preview_h);
-                    }
-
-                    // Center the preview in the available space
-                    ui.vertical_centered(|ui| {
-                        // Display the synthesizer output
-                        if let Some(texture_id) = renderer.output_texture_id {
-                            ui.add(egui::Image::new(egui::load::SizedTexture::new(texture_id, preview_size)));
-                        } else {
-                            ui.centered_and_justified(|ui| {
-                                ui.label("Initializing...");
-                            });
-                        }
-                    });
                 });
+            });
+
+            // Calculate preview size based on panel width and aspect ratio
+            let panel_width = ui.available_width();
+            let max_preview_height = 300.0_f32; // Cap preview height
+            let content_area = egui::Vec2::new(panel_width.max(64.0), max_preview_height);
+            let preview_size = node_editor.aspect_ratio.fit_size(content_area);
+            let preview_width = preview_size.x.max(64.0) as u32;
+            let preview_h = preview_size.y.max(64.0) as u32;
+
+            // Resize output texture if needed
+            if (preview_width, preview_h) != *last_preview_size {
+                renderer.resize_output(preview_width, preview_h, egui_renderer);
+                *last_preview_size = (preview_width, preview_h);
+            }
+
+            // Display the synthesizer output - sized exactly to content
+            ui.horizontal(|ui| {
+                // Center horizontally
+                let extra_width = (panel_width - preview_size.x).max(0.0);
+                if extra_width > 0.0 {
+                    ui.add_space(extra_width / 2.0);
+                }
+                if let Some(texture_id) = renderer.output_texture_id {
+                    ui.add(egui::Image::new(egui::load::SizedTexture::new(texture_id, preview_size)));
+                } else {
+                    ui.label("Initializing...");
+                }
+            });
 
             ui.separator();
 
