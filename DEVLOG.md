@@ -994,4 +994,134 @@ Rather than simultaneous R&D, adopted staged approach:
 
 ---
 
+## Phase 11: v2 Node Editor — Compose-Based Architecture
+
+### The v1 → v2 Architecture Shift
+
+The v1 node editor used a monolithic shader with runtime if-else dispatch: every pixel evaluated every condition, node operations were packed into a storage buffer, and GPU divergence limited performance. v2 replaces this with **shader composition** — each patch topology gets a specialized WGSL shader composed at edit-time.
+
+**Key difference:**
+- **v1**: Single `main.wgsl` with `if op_type == 3 { ... }` branches for each node
+- **v2**: `ShaderComposer` generates a specialized shader per patch topology — no runtime branching
+
+When topology changes (add/remove node, connect/disconnect), the entire pipeline is recompiled (~5-20ms). When only parameters change (slider adjustment), just the uniform buffer is updated (sub-ms). This gives both optimal GPU performance and responsive UI.
+
+### Prerequisites Fixed
+
+**Fullscreen triangle vertex shader** (`common.wgsl`):
+Replaced the `VertexInput` struct requiring a vertex buffer with `@builtin(vertex_index)` fullscreen triangle approach. This matches the workbench pattern (`draw(0..3, 0..1)`) and eliminates the vertex buffer entirely.
+
+**ShaderComposer parameter passing** (`shader_composer.rs`):
+The composer was generating device function calls without parameter arguments. Fixed to collect `params.{device_id}_{instance_id}_{param_name}` for each parameter and append to calls.
+
+**Instance-ID based connections:**
+Changed `Connection.from_device`/`to_device` from `usize` (vec index) to `u32` (instance_id). Index-based connections broke when nodes were removed mid-session.
+
+**Device shader deduplication:**
+The composer was including `shader_code()` once per instance, causing WGSL "redefinition" errors when multiple instances of the same device type existed. Fixed to deduplicate by `device_id`.
+
+**WGSL reserved keyword:**
+The `opamp_slew` function in `components.wgsl` used `target` as a parameter name — a WGSL reserved keyword. Renamed to `desired`.
+
+**Wobulator parameter passing:**
+Updated the Wobulator shader to accept `frequency`, `amplitude`, `phase` as function parameters instead of hardcoded values.
+
+### TestSignalGenerator
+
+Created a source device (no inputs) that generates test patterns from UV coordinates:
+- 7 modes: H ramp, V ramp, colorbars, checkerboard, radial, H oscillator, V oscillator
+- Parameters: `mode` (pattern selector), `frequency`
+- Essential for testing — all other devices require `video_in`
+
+### GPU Renderer
+
+Created `src/gpu/renderer.rs` — a complete wgpu + egui renderer using v2's compose system:
+- Fallback color bars shader when no patch is loaded
+- `recompile(patch, composer)` — expensive path: compose shader, create pipeline + params buffer
+- `update_params(patch)` — cheap path: write param values to uniform buffer
+- `render_to_texture()` + `render_with_egui()` for synth output + egui overlay
+- 3 bind group layouts: timing (group 0), placeholder for feedback textures (group 1), device params (group 2)
+- Output texture registered with egui for preview display
+
+### Node Editor UI
+
+Created `src/ui/node_editor.rs` (~950 lines), adapted from v1's 1056-line implementation:
+
+**Layout:**
+```
++------------+---------------------------+-------------+
+|            |                           |   PREVIEW   |
+|   DEVICE   |                           |   [4:3]     |
+|  PALETTE   |     NODE GRAPH EDITOR     +-------------+
+|            |                           |  INSPECTOR  |
+|            |                           |             |
++------------+---------------------------+-------------+
+```
+
+**Features:**
+- Pan/zoom canvas with grid background
+- Draggable nodes with category-colored headers (green = generators, orange = Paik/Abe)
+- Bezier curve connections between ports
+- Device palette with categorized buttons
+- Inspector panel with dynamic parameter sliders from `device.parameters()`
+- Keyboard shortcuts: Del (delete), Home (reset view), F (frame selected)
+- `graph_modified` flag triggers shader recompile, `params_modified` triggers param update
+
+**Device Registry** (`device_registry.rs`):
+Factory pattern mapping device_id strings to constructors. Categories for palette display.
+
+### Application Main Loop
+
+Rewrote `src/main.rs` from CLI demo to windowed app using `winit::application::ApplicationHandler`:
+- Default patch: TestSignal → PaikAbeColorizer
+- Menu bar with File (New/Default/Exit), Help, shader status
+- Two-tier update loop: topology changes → recompile, param changes → update buffer
+- Aspect ratio selector for preview (Free, 1:1, 4:3, 16:9, etc.)
+
+### Files Summary
+
+| File | Action |
+|------|--------|
+| `src/main.rs` | Rewritten — windowed app with egui |
+| `src/gpu/renderer.rs` | Created — wgpu + egui renderer |
+| `src/gpu/shader_composer.rs` | Modified — param passing, instance_id connections, dedup |
+| `src/gpu/mod.rs` | Modified — added renderer module |
+| `src/ui/node_editor.rs` | Created — full node editor |
+| `src/ui/device_registry.rs` | Created — device factory |
+| `src/ui/mod.rs` | Rewritten — module declarations |
+| `src/devices/generators.rs` | Created — TestSignalGenerator |
+| `src/devices/mod.rs` | Modified — added generators |
+| `src/devices/paik_abe/mod.rs` | Modified — wobulator param passing |
+| `src/shaders/common.wgsl` | Modified — fullscreen triangle vertex shader |
+| `src/shaders/components.wgsl` | Modified — WGSL reserved keyword fix |
+
+### Technical Decisions
+
+**Why compose-time instead of runtime dispatch?**
+GPU shader execution diverges at branches. v1's `if op_type == N` meant every pixel evaluated every condition. v2 generates straight-line code — only the devices in use are present in the shader. This is faster and produces smaller shaders.
+
+**Why instance_id instead of vec index?**
+Vec indices shift when nodes are removed. A `Connection` pointing to index 2 becomes invalid if index 1 is deleted. Instance IDs are monotonically increasing and never reused.
+
+**Why deduplicate by device_id?**
+Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_process()` function. The composer includes it once and all instances call it with different parameters from the uniform buffer.
+
+---
+
+## Version History
+
+- **v0.1**: TypeScript prototype (2 FPS)
+- **v0.2**: Rust + wgpu rewrite (60 FPS)
+- **v0.3**: egui control panel integration
+- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
+- **v0.5**: Visual node editor with full UX
+- **v0.6**: GPU signal routing — node graph compiles to GPU operations
+- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
+- **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
+- **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking
+- **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator
+- **v0.11**: v2 node editor — compose-based architecture, shader composition, device registry
+
+---
+
 *Last updated: January 2026*

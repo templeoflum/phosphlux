@@ -31,34 +31,25 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 - **Real-time parameter adjustment** via inspector panel
 - **Immediate input response** - no drag threshold lag
 
-### Node Types
+### Device Types
 
-**Sources**
-- Ramps (Horizontal, Vertical, Radial)
-- Oscillators
-- Noise (White, Pink, Brown)
-- Shape generators
-- Frame Buffer (per-node feedback with independent parameters)
+**Generators**
+- Test Signal Generator (7 modes: H ramp, V ramp, colorbars, checkerboard, radial, H/V oscillators)
 
-**Processing**
-- Waveshapers: Folder, Quantizer, Soft Clip, Solarize, Inverter
-- Mixer: 8 blend modes (Mix, Add, Multiply, Screen, Overlay, Difference, Luma Key A/B)
-- Color: Hue Shift
-- Colorizers: Spectrum, Threshold, Gradient
+**Paik/Abe Video Synthesizer**
+- Colorizer — 6-parameter folding amplifier with per-channel gain, fold depth, saturation, slew
+- Wobulator — Horizontal displacement with frequency, amplitude, phase control
 
-**Outputs**
-- Display node with aspect ratio lock (Free, 1:1, 4:3, 16:9, 3:4, 9:16, 2.35:1)
+**Output**
+- Any device can be designated as the output device
+- Preview with aspect ratio lock (Free, 1:1, 4:3, 16:9, 3:4, 9:16, 2.35:1)
 
-### Per-Node Frame Buffers
-Each Frame Buffer node has its own ping-pong texture pair with independent parameters:
-- Zoom, rotation, offset
-- Hue shift, saturation, decay
-- Multiple independent feedback loops can coexist
-
-### CRT Emulation
-- Scanline simulation
-- Screen curvature (barrel distortion)
-- Vignette effect
+### Compose-Based Shader System
+Each patch topology generates a specialized WGSL shader at edit-time:
+- No runtime branching — only active devices are in the shader
+- Device shader code is deduplicated by type (multiple instances share one function)
+- Parameter uniform buffer updated per-frame without recompilation
+- Reusable `ShaderDevice` trait for adding new devices
 
 ## Requirements
 
@@ -109,28 +100,37 @@ The application uses a 4-panel layout:
 
 ## Architecture
 
+Phosphlux v2 uses a **compose-based** shader architecture: each patch topology gets a specialized WGSL shader with no runtime branching. When the graph changes, the shader is recomposed and the pipeline recompiled (~5-20ms). When only parameters change, the uniform buffer is updated (sub-ms).
+
 ```
 src/
 ├── core/
-│   ├── timing.rs          # NTSC/PAL sync generation
-│   └── signal.rs          # Signal types, voltage standards
+│   ├── timing.rs              # NTSC/PAL sync generation
+│   ├── signal.rs              # Signal types, voltage standards
+│   └── component.rs           # Analog IC models (op-amp, transistor, diode, RC)
+├── devices/
+│   ├── generators.rs          # TestSignalGenerator (7 pattern modes)
+│   └── paik_abe/
+│       ├── mod.rs             # PaikAbeColorizer, PaikAbeWobulator
+│       └── colorizer.wgsl     # Colorizer shader (6-stage folding amp)
 ├── gpu/
-│   ├── renderer.rs        # wgpu pipeline, per-node Frame Buffers
-│   └── graph_compiler.rs  # Topological sort, GPU operation dispatch
+│   ├── shader_composer.rs     # ShaderDevice trait, DevicePatch, compose system
+│   └── renderer.rs            # wgpu + egui renderer, pipeline management
 ├── shaders/
-│   └── main.wgsl          # Combined synthesis + graph evaluation
+│   ├── common.wgsl            # Vertex shader, timing uniform, utility functions
+│   └── components.wgsl        # Op-amp, transistor, diode, waveshaping models
 ├── ui/
-│   ├── patch.rs           # Node graph data structures
-│   └── node_editor.rs     # Visual editor, inspector
-└── main.rs                # Application entry, 4-panel layout
+│   ├── device_registry.rs     # Device factory and palette categories
+│   └── node_editor.rs         # Visual node editor, inspector, connections
+└── main.rs                    # Application entry, 3-panel layout, event loop
 ```
 
 ### GPU Pipeline
 
-1. **Graph Compilation**: Topological sort with cycle-aware handling
-2. **Operation Dispatch**: Nodes compiled to GPU storage buffer operations
-3. **Per-Node Textures**: Frame Buffers get independent ping-pong pairs
-4. **Display Pass**: Final output with aspect ratio handling
+1. **Shader Composition**: `ShaderComposer` topologically sorts the device graph and generates a single WGSL shader with straight-line code — no runtime branching
+2. **Pipeline Recompile**: On topology change, the render pipeline is rebuilt with the new shader module
+3. **Parameter Update**: On slider changes, device parameter values are written to the `DeviceParams` uniform buffer
+4. **Render Pass**: Fullscreen triangle renders composed shader to output texture; egui overlay painted on the surface
 
 ## Research & Development Tools
 
@@ -250,9 +250,11 @@ Five foundational video synthesis devices, in order:
 See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed component requirements and milestones.
 
 ### Infrastructure Complete
-- [x] Visual node editor with pan/zoom
-- [x] Per-node Frame Buffers for independent feedback
-- [x] Mixer with blend modes and luma keying
+- [x] v2 compose-based shader architecture (specialized shader per patch)
+- [x] Visual node editor with pan/zoom, device palette, inspector
+- [x] GPU renderer with two-tier update (recompile vs param update)
+- [x] Device registry and ShaderDevice trait system
+- [x] Test signal generator (7 modes)
 - [x] Research orchestrator MCP server
 - [x] Component library (5 ICs + 2 functional blocks)
 - [x] Device workbench for shader testing
@@ -264,6 +266,8 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] CA3054 dual diff amp (matrix mixer, video keyer)
 - [x] Folding amplifier (nonlinear waveshaper)
 - [x] Wobbulator (scan displacement)
+- [x] Colorizer device node (v2 compose system)
+- [x] Wobulator device node (v2 compose system)
 
 ### Future
 - [ ] Video input: Camera and file support

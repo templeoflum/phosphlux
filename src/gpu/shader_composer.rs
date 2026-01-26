@@ -116,12 +116,12 @@ pub enum SignalType {
 /// A connection between device ports
 #[derive(Clone, Debug)]
 pub struct Connection {
-    /// Source device index
-    pub from_device: usize,
+    /// Source device instance_id
+    pub from_device: u32,
     /// Source port name
     pub from_port: String,
-    /// Destination device index
-    pub to_device: usize,
+    /// Destination device instance_id
+    pub to_device: u32,
     /// Destination port name
     pub to_port: String,
 }
@@ -144,8 +144,104 @@ pub struct DevicePatch {
     pub devices: Vec<DeviceInstance>,
     /// Connections between devices
     pub connections: Vec<Connection>,
-    /// Output device index
-    pub output_device: usize,
+    /// Output device instance_id
+    pub output_device: u32,
+    /// Next instance ID for auto-assignment
+    pub next_instance_id: u32,
+}
+
+impl DevicePatch {
+    pub fn new() -> Self {
+        Self {
+            devices: Vec::new(),
+            connections: Vec::new(),
+            output_device: 0,
+            next_instance_id: 0,
+        }
+    }
+
+    /// Add a device and return its instance_id
+    pub fn add_device(&mut self, device: Box<dyn ShaderDevice>, x: f32, y: f32) -> u32 {
+        let id = self.next_instance_id;
+        self.next_instance_id += 1;
+
+        // Initialize default param values
+        let mut params = HashMap::new();
+        for p in device.parameters() {
+            params.insert(p.name.clone(), p.default);
+        }
+
+        self.devices.push(DeviceInstance {
+            device,
+            instance_id: id,
+            params,
+            position: (x, y),
+        });
+        id
+    }
+
+    /// Remove a device by instance_id
+    pub fn remove_device(&mut self, instance_id: u32) {
+        self.devices.retain(|d| d.instance_id != instance_id);
+        self.connections.retain(|c| c.from_device != instance_id && c.to_device != instance_id);
+    }
+
+    /// Connect two devices by instance_id and port name
+    pub fn connect(&mut self, from_id: u32, from_port: &str, to_id: u32, to_port: &str) {
+        // Remove any existing connection to this input
+        self.connections.retain(|c| !(c.to_device == to_id && c.to_port == to_port));
+        self.connections.push(Connection {
+            from_device: from_id,
+            from_port: from_port.to_string(),
+            to_device: to_id,
+            to_port: to_port.to_string(),
+        });
+    }
+
+    /// Disconnect a device input
+    pub fn disconnect(&mut self, to_id: u32, to_port: &str) {
+        self.connections.retain(|c| !(c.to_device == to_id && c.to_port == to_port));
+    }
+
+    /// Get device by instance_id
+    pub fn get_device(&self, instance_id: u32) -> Option<&DeviceInstance> {
+        self.devices.iter().find(|d| d.instance_id == instance_id)
+    }
+
+    /// Get mutable device by instance_id
+    pub fn get_device_mut(&mut self, instance_id: u32) -> Option<&mut DeviceInstance> {
+        self.devices.iter_mut().find(|d| d.instance_id == instance_id)
+    }
+
+    /// Collect all parameter values into a flat f32 buffer matching the param layout
+    pub fn collect_param_values(&self, layout: &ParamLayout) -> Vec<f32> {
+        let count = layout.size / 4;
+        let mut values = vec![0.0f32; count];
+
+        for param_info in &layout.params {
+            let offset_idx = param_info.offset / 4;
+            if let Some(device) = self.get_device(param_info.device_id) {
+                // Extract the short param name (after device_id_instanceid_ prefix)
+                let prefix = format!(
+                    "{}_{}_",
+                    device.device.device_id(),
+                    device.instance_id
+                );
+                let short_name = param_info.name.strip_prefix(&prefix).unwrap_or(&param_info.name);
+
+                if let Some(&val) = device.params.get(short_name) {
+                    values[offset_idx] = val;
+                } else {
+                    // Use default from device parameter definition
+                    if let Some(dp) = device.device.parameters().iter().find(|p| p.name == short_name) {
+                        values[offset_idx] = dp.default;
+                    }
+                }
+            }
+        }
+
+        values
+    }
 }
 
 /// Composed shader ready for GPU
@@ -161,7 +257,7 @@ pub struct ComposedShader {
 }
 
 /// Layout of parameter uniforms
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ParamLayout {
     /// Total size in bytes
     pub size: usize,
@@ -252,16 +348,20 @@ impl ShaderComposer {
             wgsl.push_str("\n\n");
         }
 
-        // 6. Add device shader code
+        // 6. Add device shader code (deduplicated by device_id —
+        //    multiple instances of the same device type share one function)
         wgsl.push_str("// === DEVICES ===\n");
+        let mut included_device_ids = std::collections::HashSet::new();
         for device_inst in &patch.devices {
-            wgsl.push_str(&format!(
-                "// --- {} (instance {}) ---\n",
-                device_inst.device.device_name(),
-                device_inst.instance_id
-            ));
-            wgsl.push_str(device_inst.device.shader_code());
-            wgsl.push_str("\n\n");
+            let device_id = device_inst.device.device_id();
+            if included_device_ids.insert(device_id) {
+                wgsl.push_str(&format!(
+                    "// --- {} ---\n",
+                    device_inst.device.device_name(),
+                ));
+                wgsl.push_str(device_inst.device.shader_code());
+                wgsl.push_str("\n\n");
+            }
         }
 
         // 7. Generate main function
@@ -388,7 +488,7 @@ impl ShaderComposer {
         let sorted = self.topological_sort(patch)?;
 
         // Declare signal variables
-        for (idx, device_idx) in sorted.iter().enumerate() {
+        for device_idx in &sorted {
             let device = &patch.devices[*device_idx];
             wgsl.push_str(&format!(
                 "    var signal_{}: vec4<f32> = vec4<f32>(0.0);\n",
@@ -401,16 +501,13 @@ impl ShaderComposer {
         for device_idx in &sorted {
             let device = &patch.devices[*device_idx];
 
-            // Get input signals from connections
+            // Get input signals from connections (match by instance_id)
             let mut input_args = Vec::new();
             for input in device.device.inputs() {
                 let mut found = false;
                 for conn in &patch.connections {
-                    if conn.to_device == *device_idx && conn.to_port == input.name {
-                        input_args.push(format!(
-                            "signal_{}",
-                            patch.devices[conn.from_device].instance_id
-                        ));
+                    if conn.to_device == device.instance_id && conn.to_port == input.name {
+                        input_args.push(format!("signal_{}", conn.from_device));
                         found = true;
                         break;
                     }
@@ -419,6 +516,23 @@ impl ShaderComposer {
                     input_args.push("vec4<f32>(0.0)".to_string());
                 }
             }
+
+            // Collect parameter references from the params uniform
+            let mut param_args = Vec::new();
+            for param in device.device.parameters() {
+                let param_name = format!(
+                    "{}_{}_{}",
+                    device.device.device_id(),
+                    device.instance_id,
+                    param.name
+                );
+                param_args.push(format!("params.{}", param_name));
+            }
+
+            // Build all args after uv, time
+            let mut all_extra_args = Vec::new();
+            all_extra_args.extend(input_args);
+            all_extra_args.extend(param_args);
 
             // Call device function
             let fn_name = format!(
@@ -430,13 +544,15 @@ impl ShaderComposer {
                 "    signal_{} = {}(uv, time{}{});\n",
                 device.instance_id,
                 fn_name,
-                if input_args.is_empty() { "" } else { ", " },
-                input_args.join(", ")
+                if all_extra_args.is_empty() { "" } else { ", " },
+                all_extra_args.join(", ")
             ));
         }
 
         // Return output device's signal
-        let output_device = &patch.devices[patch.output_device];
+        let output_idx = Self::instance_to_index(patch, patch.output_device)
+            .ok_or(ComposeError::MissingDevice(patch.output_device))?;
+        let output_device = &patch.devices[output_idx];
         wgsl.push_str(&format!(
             "\n    return signal_{};\n",
             output_device.instance_id
@@ -446,14 +562,23 @@ impl ShaderComposer {
         Ok(wgsl)
     }
 
+    /// Resolve instance_id to device index
+    fn instance_to_index(patch: &DevicePatch, instance_id: u32) -> Option<usize> {
+        patch.devices.iter().position(|d| d.instance_id == instance_id)
+    }
+
     fn topological_sort(&self, patch: &DevicePatch) -> Result<Vec<usize>, ComposeError> {
         let n = patch.devices.len();
         let mut in_degree = vec![0usize; n];
         let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
 
         for conn in &patch.connections {
-            in_degree[conn.to_device] += 1;
-            adj[conn.from_device].push(conn.to_device);
+            let from_idx = Self::instance_to_index(patch, conn.from_device)
+                .ok_or(ComposeError::MissingDevice(conn.from_device))?;
+            let to_idx = Self::instance_to_index(patch, conn.to_device)
+                .ok_or(ComposeError::MissingDevice(conn.to_device))?;
+            in_degree[to_idx] += 1;
+            adj[from_idx].push(to_idx);
         }
 
         let mut queue: Vec<usize> = Vec::new();
@@ -536,10 +661,10 @@ fn device_test_ramp_process(uv: vec2<f32>, time: f32) -> vec4<f32> {
 }
 "#
         }
-        fn parameters(&self) -> &[DeviceParameter] { &[] }
-        fn inputs(&self) -> &[Port] { &[] }
-        fn outputs(&self) -> &[Port] {
-            &[Port { name: "out".to_string(), signal_type: SignalType::Rgb }]
+        fn parameters(&self) -> Vec<DeviceParameter> { vec![] }
+        fn inputs(&self) -> Vec<Port> { vec![] }
+        fn outputs(&self) -> Vec<Port> {
+            vec![Port { name: "out".to_string(), signal_type: SignalType::Rgb }]
         }
     }
 
@@ -556,6 +681,7 @@ fn device_test_ramp_process(uv: vec2<f32>, time: f32) -> vec4<f32> {
             ],
             connections: vec![],
             output_device: 0,
+            next_instance_id: 1,
         };
 
         let mut composer = ShaderComposer::new();

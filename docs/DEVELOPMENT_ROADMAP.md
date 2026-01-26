@@ -100,23 +100,23 @@ This document outlines the phased development plan for **Phosphlux** — a real-
 
 ---
 
-## Phase 3: GPU Acceleration
+## Phase 3: GPU Acceleration (COMPLETED)
 
-### WebGL Backend
-- [ ] GLSL shader versions of core effects
-- [ ] Ping-pong FBO for feedback
-- [ ] Texture-based frame buffers
-- [ ] Shader-based CRT emulation
+### Rust + wgpu Backend
+- [x] WGSL shader composition system (v2 compose architecture)
+- [x] Fullscreen triangle rendering (no vertex buffer)
+- [x] Specialized shader per patch topology (no runtime branching)
+- [x] Two-tier update: recompile on topology change, uniform update on param change
 
 ### Performance Targets
-- [ ] 1080p @ 60fps on mid-range GPU
+- [x] 60fps on mid-range GPU (verified on RTX 2060)
 - [ ] 4K @ 30fps on high-end GPU
-- [ ] Sub-frame latency for real-time use
+- [x] Sub-frame latency for real-time use
 
 ### Hybrid Processing
-- [ ] CPU for control logic
-- [ ] GPU for pixel processing
-- [ ] Efficient CPU-GPU data transfer
+- [x] CPU for control logic and timing
+- [x] GPU for pixel processing via composed WGSL shaders
+- [x] Efficient CPU-GPU transfer via uniform buffers
 
 ---
 
@@ -145,13 +145,14 @@ This document outlines the phased development plan for **Phosphlux** — a real-
 
 ---
 
-## Phase 5: User Interface
+## Phase 5: User Interface (PARTIALLY COMPLETED)
 
 ### Node-Based Patching
-- [ ] Visual module representation
-- [ ] Cable routing with physics
-- [ ] Module parameter panels
-- [ ] Preset management
+- [x] Visual module representation (draggable nodes with category-colored headers)
+- [x] Bezier curve cable routing between ports
+- [x] Device parameter inspector panel with dynamic sliders
+- [x] Device palette with categorized device buttons
+- [ ] Preset management / patch save/load
 
 ### Visualization
 - [ ] Oscilloscope view

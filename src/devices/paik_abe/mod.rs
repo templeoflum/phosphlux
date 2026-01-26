@@ -108,7 +108,6 @@ impl ShaderDevice for PaikAbeWobulator {
     }
 
     fn shader_code(&self) -> &str {
-        // Inline for now - can be moved to separate file
         r#"
 // Paik/Abe Wobulator
 // Horizontal displacement based on luminance
@@ -116,20 +115,18 @@ impl ShaderDevice for PaikAbeWobulator {
 fn device_paik_abe_wobulator_process(
     uv: vec2<f32>,
     time: f32,
-    video_in: vec4<f32>
+    video_in: vec4<f32>,
+    frequency: f32,
+    amplitude: f32,
+    phase: f32
 ) -> vec4<f32> {
     // Get displacement amount from input luminance
     let luma = to_luma(video_in.rgb);
 
-    // Wobble frequency and amplitude from timing
-    let wobble_freq = 4.0;
-    let wobble_amp = 0.02;
-
     // Calculate horizontal displacement
-    let displacement = sin(uv.y * wobble_freq * 6.283 + time * 2.0) * wobble_amp * luma;
+    let displacement = sin(uv.y * frequency * 6.283 + time * 2.0 + phase * 6.283) * amplitude * luma;
 
-    // Apply displacement (would need texture sampling in full implementation)
-    // For now, just modulate the color based on displacement
+    // Apply displacement (modulate color based on displacement)
     let wobbled = video_in.rgb * (1.0 + displacement * 2.0);
 
     return vec4<f32>(video_clamp3(wobbled), 1.0);

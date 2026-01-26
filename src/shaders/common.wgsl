@@ -38,21 +38,20 @@ var<uniform> timing: Timing;
 // Bound per-device by the shader composer
 
 // === VERTEX SHADER ===
-struct VertexInput {
-    @location(0) position: vec2<f32>,
-    @location(1) uv: vec2<f32>,
-}
-
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
 }
 
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    // Fullscreen triangle (3 vertices, no vertex buffer needed)
+    // draw(0..3, 0..1) covers clip space [-1,1]
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(in.position, 0.0, 1.0);
-    out.uv = in.uv;
+    let u = f32((vertex_index << 1u) & 2u);
+    let v = f32(vertex_index & 2u);
+    out.clip_position = vec4<f32>(u * 2.0 - 1.0, v * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = vec2<f32>(u, 1.0 - v);
     return out;
 }
 

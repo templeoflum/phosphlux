@@ -88,14 +88,14 @@ fn opamp_saturate(v_in: f32, params: OpAmpParams) -> f32 {
 
 // Slew-rate limited op-amp output
 // prev: previous output value
-// target: desired output
+// desired: desired output
 // dt: time step (normalized, typically 1.0 for per-sample)
-fn opamp_slew(prev: f32, target: f32, slew_rate: f32) -> f32 {
-    let delta = target - prev;
+fn opamp_slew(prev: f32, desired: f32, slew_rate: f32) -> f32 {
+    let delta = desired - prev;
     let max_delta = slew_rate;
 
     if abs(delta) <= max_delta {
-        return target;
+        return desired;
     } else {
         return prev + sign(delta) * max_delta;
     }
