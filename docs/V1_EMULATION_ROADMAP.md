@@ -37,8 +37,8 @@ Target: Component-level emulation of five foundational video synthesis devices.
 |----|------|----------|--------|
 | CA3046 | Transistor Array | Diff pairs, current mirrors | ✅ Modeled + Tested |
 | CA3019 | Diode Array | Amplitude window detection | ✅ Modeled + Tested |
-| CA3022 | Video Amp | Signal conditioning | ❌ Need datasheet |
-| CA3023 | Video Amp | Signal conditioning | ❌ Need datasheet |
+| CA3022 | Video Amp | Signal conditioning | ✅ Modeled + Tested |
+| CA3023 | Video Amp | Signal conditioning | ✅ Modeled + Tested |
 | CA3054 | Diff Amp | Matrix mixing, keying | ✅ Modeled + Tested |
 | CA3055 | Diff Amp | Matrix mixing | ⏳ Optional (CA3054 covers this) |
 
@@ -57,7 +57,9 @@ Target: Component-level emulation of five foundational video synthesis devices.
 - ✅ Folding amplifier modeled and tested
 - ✅ All above tested in workbench at 60 FPS with parameter sweeps
 - ✅ Wobbulator shader tested in workbench with animation and amplitude sweeps
-- ❌ CA3022/CA3023 Video Amp datasheets still needed (optional)
+- ✅ CA3022 wideband video amplifier modeled (gain, bandwidth, slew, saturation, noise)
+- ✅ CA3023 high-gain subcarrier amplifier modeled (two-stage gain, bandpass, phase rotation, clamp)
+- ✅ 6-stage signal chain composed with CA3022 video amp output stage
 
 ---
 
@@ -199,14 +201,15 @@ LZX Cadet is well-documented and uses modern components, making it the easiest t
 | Component | Type | Shaders |
 |-----------|------|---------|
 | CA3019 | Diode Array | model.wgsl, colorizer.wgsl, ped_control.wgsl |
+| CA3022 | Video Amp | model.wgsl, video_amp.wgsl |
+| CA3023 | Subcarrier Amp | model.wgsl, subcarrier_amp.wgsl |
 | CA3046 | Transistor Array | model.wgsl, colorizer.wgsl |
+| CA3054 | Dual Diff Amp | model.wgsl, matrix_mixer.wgsl, video_keyer.wgsl |
 | CA3080 | OTA | model.wgsl, vca.wgsl |
 | LM311 | Comparator | model.wgsl, keyer.wgsl |
 
 ### Priority Queue (Need Datasheets)
-1. **CA3054/CA3055** — Paik/Abe matrix mixing
-2. **CA3022/CA3023** — Paik/Abe video amps
-3. **MC1445** — Sandin IP gain blocks
+1. **MC1445** — Sandin IP gain blocks
 
 ### Known Sources
 - [1978 RCA Linear IC Databook](https://www.smcelectronics.com/DOWNLOADS/1978-RCA%20LINEAR%20IC.PDF) — All CA-30xx parts
@@ -217,11 +220,12 @@ LZX Cadet is well-documented and uses modern components, making it the easiest t
 
 ## Milestone Definitions
 
-### M1: Paik/Abe Core
-- [ ] All CA-30xx components modeled
-- [ ] Matrix mixer functional
-- [ ] Colorizer with adjustable bands
-- [ ] Basic wobbulator effect
+### M1: Paik/Abe Core ✅ COMPLETE
+- [x] All CA-30xx components modeled (CA3019, CA3022, CA3023, CA3046, CA3054, CA3080)
+- [x] Matrix mixer functional (CA3054 matrix_mixer.wgsl)
+- [x] Colorizer with adjustable bands (CA3019 ped_control.wgsl)
+- [x] Basic wobbulator effect (wobbulator.wgsl)
+- [x] 6-stage signal chain composed and tested
 
 ### M2: Sandin IP Core
 - [ ] Amplitude classifier

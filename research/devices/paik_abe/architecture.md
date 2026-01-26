@@ -38,8 +38,8 @@ Analyzed from original schematics (26 pages).
 | IC | Type | Function | Schematic Page | Model Status |
 |----|------|----------|----------------|--------------|
 | CA3019 | Diode Array | Amplitude window detection, burst generator | 27, 28 | ✅ Modeled |
-| CA3022 | Video Amp | Chroma key video output | 10, 20 | ❌ Need |
-| CA3023 | Video Amp | Subcarrier amplifier | 26, 30 | ❌ Need |
+| CA3022 | Video Amp | Chroma key video output | 10, 20 | ✅ Modeled |
+| CA3023 | Video Amp | Subcarrier amplifier | 3, 4, 26, 30 | ✅ Modeled |
 | CA3046 | Transistor Array | Keying circuits, diff pairs | 19 | ✅ Modeled |
 | CA3054 | Diff Amp | Keying signal processing | 19 | ✅ Modeled |
 | CA3055 | Diff Amp | Power supply regulation | 12, 25 | ❌ Need |
@@ -85,17 +85,19 @@ Analyzed from original schematics (26 pages).
 - Gate signal for hard/soft keying
 - External control panel input
 
-### 6. Video Amplifiers (Pages 9, 10, 12, 17)
-- CA3022 and CA3023 ICs
-- Wide bandwidth for video
-- Output buffering
+### 6. Video Amplifiers (Pages 9, 10, 12, 17) ✅ Modeled
+- CA3022 wideband video amplifier (model.wgsl, video_amp.wgsl)
+- Configurable gain (R2/R1 ratio), bandwidth rolloff, slew rate limiting
+- Soft saturation at supply rails, analog noise floor
+- Output buffering stage in 6-stage signal chain
 - Sync insertion point
 
-### 7. Subcarrier Amp (Pages 3, 4)
-- 3.58 MHz color subcarrier processing
-- CA3023 amplifier
-- Clamp pulse generation
-- Phase control
+### 7. Subcarrier Amp (Pages 3, 4) ✅ Modeled
+- CA3023 high-gain two-stage amplifier (model.wgsl, subcarrier_amp.wgsl)
+- 3.58 MHz NTSC color subcarrier processing with bandpass characteristic
+- Phase rotation for hue control (YIQ color space)
+- Black level clamp/DC restoration
+- Drive saturation for overdriven subcarrier distortion
 
 ### 8. NTSC Encoder (Pages 22-26)
 - Complex PCB with many transistors

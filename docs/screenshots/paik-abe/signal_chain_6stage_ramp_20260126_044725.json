@@ -1,0 +1,7 @@
+{
+  "name": "signal_chain_6stage_ramp",
+  "device": "paik-abe",
+  "description": "Full 6-stage Paik/Abe signal chain with horizontal ramp input. Stages: Wobbulator, Matrix Mixer, Folding Amp, PED Colorizer, Video Keyer, CA3022 Video Amp output.",
+  "timestamp": "2026-01-26T04:47:25.049754",
+  "image_file": "signal_chain_6stage_ramp_20260126_044725.png"
+}

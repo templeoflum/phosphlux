@@ -1,0 +1,112 @@
+{
+  "name": "CA3023",
+  "type": "high_gain_wideband_amplifier",
+  "manufacturer": "RCA/Intersil",
+  "description": "High-Gain Wideband Amplifier - Two-stage broadband amplifier with bandpass characteristic for video and subcarrier processing",
+  "package": "TO-99-12 (12-pin metal can) or DIP-14",
+  "era": "1970s",
+  "family": "CA3020 Broadband Amplifier Series",
+
+  "specs": {
+    "supply_voltage_max_v": 12,
+    "supply_voltage_typ_v": 9,
+    "supply_voltage_min_v": 6,
+    "quiescent_current_ma": 12,
+    "power_dissipation_mw": 500,
+    "voltage_gain_min_db": 30,
+    "voltage_gain_max_db": 50,
+    "bandwidth_low_mhz": 0.1,
+    "bandwidth_high_mhz": 60,
+    "center_frequency_mhz": 3.58,
+    "slew_rate_v_us": 15,
+    "input_impedance_kohm": 100,
+    "output_impedance_ohm": 50,
+    "output_swing_v_pp": 4.0,
+    "noise_figure_db": 6,
+    "phase_shift_range_deg": 360,
+    "operating_temp_min_c": -55,
+    "operating_temp_max_c": 125
+  },
+
+  "pinout": {
+    "1": "Stage 1 Input+",
+    "2": "Stage 1 Input-",
+    "3": "Stage 1 Bypass",
+    "4": "V+",
+    "5": "Stage 1 Output",
+    "6": "Stage 2 Input",
+    "7": "Stage 2 Bypass",
+    "8": "Stage 2 Output",
+    "9": "NC",
+    "10": "V-",
+    "11": "Ground",
+    "12": "Gain Set"
+  },
+
+  "internal_structure": {
+    "stages": 2,
+    "stage1": "High-gain differential input, wideband",
+    "stage2": "Output buffer with gain, bandpass-capable",
+    "total_transistors": 12,
+    "description": "Two cascaded gain stages with inter-stage coupling. External components set frequency response and phase characteristics."
+  },
+
+  "transfer_function": {
+    "type": "two_stage_amplifier_bandpass",
+    "equation": "Vout = gain1 * gain2 * Vin * H_bp(f)",
+    "bandpass_model": "H_bp(f) = (j*f/f_center) / (1 + j*f/(f_center*Q))^2",
+    "phase_model": "phi = atan2(Im(H), Re(H)) + external_phase_shift",
+    "clamp_model": "DC restoration: Vout = max(Vin, clamp_level)",
+    "parameters": {
+      "gain1_typical": 20,
+      "gain2_typical": 10,
+      "f_center_mhz": 3.58,
+      "Q_typical": 5,
+      "phase_range_deg": 360,
+      "clamp_level_v": 0.0
+    }
+  },
+
+  "external_components": {
+    "R1": "2.2 kohm (stage 1 gain set)",
+    "R2": "4.7 kohm (stage 2 gain set)",
+    "C1": "22 pF (interstage coupling / bandpass tuning)",
+    "C2": "100 pF (frequency compensation)",
+    "L1": "Inductor for bandpass peaking at 3.58 MHz (optional)"
+  },
+
+  "applications": [
+    "3.58 MHz NTSC color subcarrier amplifier",
+    "Clamp pulse generation",
+    "Phase-controlled color processing",
+    "IF amplifier stages",
+    "Wideband signal conditioning"
+  ],
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer (Pages 3, 4, 26, 30 - Subcarrier amplifier, clamp pulse)"
+  ],
+
+  "notes": [
+    "Higher-gain variant of CA3022 with two cascaded stages",
+    "Bandpass characteristic peaked around NTSC 3.58 MHz subcarrier",
+    "Phase control capability for color angle adjustment",
+    "Black level clamp/restore function",
+    "In Paik/Abe: handles color subcarrier amplification and phase control",
+    "Multiple instances used across schematic pages 3, 4, 26, 30",
+    "Critical for NTSC color encoding chain"
+  ],
+
+  "substitutes": [
+    {"part": "CA3020", "notes": "Lower gain single-stage, can cascade"},
+    {"part": "MC1350", "notes": "Motorola IF amplifier, similar function"},
+    {"part": "NE592", "notes": "Signetics video amp, similar BW"}
+  ],
+
+  "datasheet_source": "1978 RCA Linear IC Databook",
+  "sources": [
+    "RCA Linear IC Databook 1978",
+    "NTSC Standard (RS-170A) for 3.58 MHz subcarrier reference",
+    "Paik/Abe Synthesizer Schematics (Pages 3, 4, 26, 30)"
+  ]
+}

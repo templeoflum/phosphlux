@@ -1,0 +1,12 @@
+{
+  "component": "ics/ca3022",
+  "version": 1,
+  "created_at": "2026-01-26T00:00:00.000000",
+  "created_by": "claude-opus-4.5",
+  "notes": "CA3022 wideband video amplifier model. Single-stage broadband amp from RCA CA3020 family. Models gain, bandwidth rolloff, slew limiting, soft saturation, and noise floor. Used in Paik/Abe as chroma key video output amplifier (schematic pages 10, 20).",
+  "source_artifacts": [
+    "research/devices/paik_abe/Paik Abe Video Synthesizer Technical Documentation.pdf",
+    "research/devices/paik_abe/ETC_PaikAbe_Schematics.pdf",
+    "research/components/RCA_1978_Linear_IC_Databook.pdf"
+  ]
+}

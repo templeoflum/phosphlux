@@ -1,0 +1,96 @@
+{
+  "name": "CA3022",
+  "type": "wideband_video_amplifier",
+  "manufacturer": "RCA/Intersil",
+  "description": "Low Power Wideband Video Amplifier - Single-stage broadband amplifier for video-rate signals",
+  "package": "TO-5 (8-pin metal can) or DIP-8",
+  "era": "1970s",
+  "family": "CA3020 Broadband Amplifier Series",
+
+  "specs": {
+    "supply_voltage_max_v": 12,
+    "supply_voltage_typ_v": 9,
+    "supply_voltage_min_v": 6,
+    "quiescent_current_ma": 8,
+    "power_dissipation_mw": 300,
+    "voltage_gain_min_db": 20,
+    "voltage_gain_max_db": 40,
+    "bandwidth_mhz": 10,
+    "slew_rate_v_us": 10,
+    "input_impedance_kohm": 50,
+    "output_impedance_ohm": 75,
+    "output_swing_v_pp": 3.0,
+    "noise_figure_db": 8,
+    "operating_temp_min_c": -55,
+    "operating_temp_max_c": 125
+  },
+
+  "pinout": {
+    "1": "Input",
+    "2": "Bypass / Feedback",
+    "3": "V+",
+    "4": "Output",
+    "5": "NC",
+    "6": "V-",
+    "7": "Ground",
+    "8": "Gain Set (R2/R1)"
+  },
+
+  "transfer_function": {
+    "type": "voltage_amplifier",
+    "equation": "Vout = gain * Vin, where gain = R2/R1 (set by external resistors)",
+    "bandwidth_model": "Single dominant pole: H(f) = gain / (1 + j*f/f_3dB)",
+    "saturation_model": "Soft clip at supply rails: Vout = headroom * tanh(Vin * gain / headroom)",
+    "slew_rate_model": "dVout/dt <= slew_rate: rate-limited transitions",
+    "parameters": {
+      "gain_min": 10,
+      "gain_max": 100,
+      "f_3dB_mhz": 10,
+      "slew_rate_v_us": 10,
+      "headroom_v": 1.5
+    }
+  },
+
+  "external_components": {
+    "R1": "5.6 kohm (input resistor - sets gain with R2)",
+    "R2": "10 kohm (feedback resistor - sets gain with R1)",
+    "C1": "22 pF (frequency compensation)",
+    "C2": "0.001 uF (bypass capacitor)",
+    "C3": "1000 pF (output coupling)"
+  },
+
+  "applications": [
+    "Chroma key video output amplifier",
+    "Video signal conditioning",
+    "Camera output buffering",
+    "Oscilloscope vertical amplifier",
+    "RF/IF amplifier"
+  ],
+
+  "used_in": [
+    "Paik/Abe Video Synthesizer (Pages 10, 20 - Video output amplifier)"
+  ],
+
+  "notes": [
+    "Part of the RCA CA3020 broadband amplifier family (CA3020/CA3021/CA3022/CA3023)",
+    "Single gain stage with external feedback network",
+    "Configurable gain via R2/R1 ratio",
+    "Designed for 75 ohm video systems",
+    "In Paik/Abe: buffers and amplifies signal after keying/mixing stages",
+    "Bandwidth is video-rate (>6 MHz NTSC requirement)"
+  ],
+
+  "substitutes": [
+    {"part": "CA3020", "notes": "Higher power version of same family"},
+    {"part": "CA3020A", "notes": "Improved CA3020"},
+    {"part": "NE592", "notes": "Similar video amp, different pinout"},
+    {"part": "MC1445", "notes": "Motorola equivalent gain block"}
+  ],
+
+  "datasheet_source": "1978 RCA Linear IC Databook",
+  "sources": [
+    "RCA Linear IC Databook 1978",
+    "RCA Application Note AN-5250",
+    "Paik/Abe Synthesizer Schematics (Pages 10, 20)"
+  ]
+}

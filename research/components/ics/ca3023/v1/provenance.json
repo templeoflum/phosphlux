@@ -1,0 +1,12 @@
+{
+  "component": "ics/ca3023",
+  "version": 1,
+  "created_at": "2026-01-26T00:00:00.000000",
+  "created_by": "claude-opus-4.5",
+  "notes": "CA3023 high-gain wideband amplifier model. Two-stage broadband amp from RCA CA3020 family with bandpass characteristic peaked around NTSC 3.58 MHz subcarrier. Models cascaded gain stages, bandpass filtering, phase rotation (hue control), black level clamping, and drive saturation. Used in Paik/Abe as subcarrier amplifier (schematic pages 3, 4, 26, 30).",
+  "source_artifacts": [
+    "research/devices/paik_abe/Paik Abe Video Synthesizer Technical Documentation.pdf",
+    "research/devices/paik_abe/ETC_PaikAbe_Schematics.pdf",
+    "research/components/RCA_1978_Linear_IC_Databook.pdf"
+  ]
+}

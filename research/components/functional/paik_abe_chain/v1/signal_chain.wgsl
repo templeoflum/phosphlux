@@ -1,14 +1,14 @@
-// Paik/Abe Complete Signal Chain - Composed 5-Stage Processor
+// Paik/Abe Complete Signal Chain - Composed 6-Stage Processor
 //
 // Single-pass shader composing the full Paik/Abe signal path:
-//   Input -> [Wobbulator UV] -> Matrix Mixer -> Folding Amp -> PED Colorizer -> Output
-//                                                           \-> Video Keyer -/
+//   Input -> [Wobbulator UV] -> Matrix Mixer -> Folding Amp -> PED Colorizer -> Video Keyer -> Video Amp -> Output
 //
 // Wobbulator displaces the input UV (spatial modulation on source).
 // Matrix Mixer extracts 7 channels and creates weighted RGB.
 // Folding Amp applies nonlinear wavefolding distortion.
 // PED Colorizer maps luminance to color bands via amplitude windows.
 // Video Keyer blends between folded and colorized output by luminance.
+// Video Amp (CA3022) applies output bandwidth limiting, soft saturation, and analog noise.
 //
 // Workbench Parameters:
 //   gain      -> Fold amount (wavefolder intensity)
@@ -18,7 +18,7 @@
 //   bias      -> Wobbulator displacement amount
 //   frequency -> Wobbulator oscillator speed
 //   phase     -> Matrix rotation angle
-//   threshold -> Key clip level (keyer blend point)
+//   threshold -> Video amp output gain (replaces key clip; keyer uses fixed 0.3)
 
 struct Params {
     gain: f32,      // Fold amount
@@ -28,7 +28,7 @@ struct Params {
     bias: f32,      // Wobbulator amount
     frequency: f32, // Wobbulator speed
     phase: f32,     // Matrix rotation
-    threshold: f32, // Key clip
+    threshold: f32, // Video amp gain
     _pad0: f32, _pad1: f32, _pad2: f32, _pad3: f32,
     _pad4: f32, _pad5: f32, _pad6: f32, _pad7: f32,
 }
@@ -209,6 +209,35 @@ fn video_key(source_a: vec3<f32>, source_b: vec3<f32>, luma: f32, clip: f32) -> 
 }
 
 // ============================================================================
+// STAGE 6: VIDEO AMPLIFIER (CA3022 output stage)
+// ============================================================================
+
+// Gain with DC offset (centered around 0.5 for video signals)
+fn video_amp_gain(input: f32, gain: f32) -> f32 {
+    let centered = input - 0.5;
+    return centered * gain + 0.5;
+}
+
+// Soft saturation at output rails (tanh compression)
+fn video_amp_saturate(input: f32) -> f32 {
+    let centered = input - 0.5;
+    return tanh(centered * 2.5) / tanh(2.5) * 0.5 + 0.5;
+}
+
+// Deterministic per-pixel noise (analog noise floor)
+fn video_amp_noise(signal: f32, uv: vec2<f32>) -> f32 {
+    let n = fract(sin(dot(uv, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+    let noise = (n - 0.5) * 0.02;  // Subtle: +/- 1% amplitude noise
+    return signal + noise;
+}
+
+// Bandwidth limiting: horizontal neighbor averaging (RC lowpass analog)
+fn video_amp_bandwidth(center: vec3<f32>, left: vec3<f32>, right: vec3<f32>) -> vec3<f32> {
+    // Gentle 3-tap lowpass: 0.25 * left + 0.5 * center + 0.25 * right
+    return left * 0.25 + center * 0.5 + right * 0.25;
+}
+
+// ============================================================================
 // MAIN SHADER - FULL SIGNAL CHAIN
 // ============================================================================
 
@@ -222,7 +251,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let wob_amount = select(params.bias, 0.3, params.bias == 0.0);
     let wob_speed = select(params.frequency, 0.2, params.frequency == 0.0);
     let mat_rotation = select(params.phase, 0.0, params.phase == 0.0);
-    let key_clip = select(params.threshold, 0.3, params.threshold == 0.0);
+    let vid_amp_gain = select(params.threshold, 0.5, params.threshold == 0.0);
+
+    // Fixed key clip (previously controlled by threshold, now fixed at 0.3)
+    let key_clip = 0.3;
 
     // --- Stage 1: Wobbulator (UV displacement) ---
     let displaced_uv = wobbulate_uv(in.uv, wob_amount, wob_speed);
@@ -244,9 +276,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // --- Stage 5: Video Keyer ---
     // Blend between folded (warm analog) and colorized (PED bands)
     let input_luma = luminance(rgb);
-    let output_color = video_key(colorized, folded, input_luma, key_clip);
+    let keyed = video_key(colorized, folded, input_luma, key_clip);
 
-    return vec4<f32>(output_color, 1.0);
+    // --- Stage 6: Video Amplifier (CA3022) ---
+    // Output gain trim (0.5 to 2.0x via threshold parameter)
+    let amp_gain = 0.5 + vid_amp_gain * 1.5;
+
+    // Bandwidth limiting: gentle horizontal blur approximating RC lowpass rolloff.
+    // Sample horizontal neighbors of the displaced input and blend with keyed result.
+    // This models the video amp's finite bandwidth softening sharp transitions.
+    let texel_size = 1.0 / vec2<f32>(textureDimensions(input_texture));
+    let left_sample = textureSample(input_texture, input_sampler,
+        displaced_uv - vec2<f32>(texel_size.x, 0.0));
+    let right_sample = textureSample(input_texture, input_sampler,
+        displaced_uv + vec2<f32>(texel_size.x, 0.0));
+    let neighbor_avg = (left_sample.rgb + right_sample.rgb) * 0.5;
+
+    // Blend keyed output toward neighbor average (subtle bandwidth softening)
+    let bw_limited = video_amp_bandwidth(keyed, mix(keyed, neighbor_avg, 0.3),
+                                                 mix(keyed, neighbor_avg, 0.3));
+
+    // Apply gain
+    var output_color = vec3<f32>(
+        video_amp_gain(bw_limited.r, amp_gain),
+        video_amp_gain(bw_limited.g, amp_gain),
+        video_amp_gain(bw_limited.b, amp_gain)
+    );
+
+    // Soft saturation at output rails
+    output_color = vec3<f32>(
+        video_amp_saturate(output_color.r),
+        video_amp_saturate(output_color.g),
+        video_amp_saturate(output_color.b)
+    );
+
+    // Analog noise floor
+    output_color = vec3<f32>(
+        video_amp_noise(output_color.r, in.uv + vec2<f32>(0.0, 0.0)),
+        video_amp_noise(output_color.g, in.uv + vec2<f32>(0.333, 0.0)),
+        video_amp_noise(output_color.b, in.uv + vec2<f32>(0.667, 0.0))
+    );
+
+    return vec4<f32>(clamp(output_color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }
 
 // ============================================================================

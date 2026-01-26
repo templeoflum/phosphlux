@@ -1,0 +1,7 @@
+{
+  "name": "signal_chain_6stage_colorbars",
+  "device": "paik-abe",
+  "description": "Full 6-stage Paik/Abe signal chain with colorbars input. All stages active including CA3022 video amp output stage.",
+  "timestamp": "2026-01-26T04:47:42.739317",
+  "image_file": "signal_chain_6stage_colorbars_20260126_044742.png"
+}

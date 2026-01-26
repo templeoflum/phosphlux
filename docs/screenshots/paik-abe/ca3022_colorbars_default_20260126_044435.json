@@ -1,0 +1,7 @@
+{
+  "name": "ca3022_colorbars_default",
+  "device": "paik-abe",
+  "description": "CA3022 wideband video amplifier with colorbars input, moderate gain (2.25x), neutral offset, 30% bandwidth filtering, light slew limiting, 50% headroom",
+  "timestamp": "2026-01-26T04:44:35.571811",
+  "image_file": "ca3022_colorbars_default_20260126_044435.png"
+}
