@@ -1,6 +1,6 @@
 # Development Roadmap
 
-This document outlines the phased development plan for **Phosphlux** — a real-time GPU analog video synthesizer.
+This document outlines the phased development plan for **Phosphlux** — a real-time GPU analog video synthesizer built in Rust with wgpu.
 
 ## Guiding Principles
 
@@ -11,268 +11,193 @@ This document outlines the phased development plan for **Phosphlux** — a real-
 
 ---
 
-## Phase 1: Foundation (COMPLETED)
+## Completed Work
 
-### Core Infrastructure
-- [x] TypeScript project setup with Vite/Vitest
-- [x] Signal types and timing constants (NTSC/PAL)
-- [x] Frame buffer operations
-- [x] Color space conversions (RGB, YIQ)
+### TypeScript Prototype (v0.1, archived)
 
-### Sync Generation
-- [x] Sample-accurate sync generator
-- [x] Frame-based sync generator for high-level use
-- [x] Horizontal/vertical ramps
-- [x] Blanking interval detection
+Initial implementation validated the architecture but ran at ~2 FPS. Archived to `__archive_typescript_reference/`. The prototype proved the concept; the Rust rewrite made it performant.
 
-### Basic Modules
-- [x] LFO with multiple waveforms
-- [x] Video-rate oscillator
-- [x] Ramp/shape generators
-- [x] Noise generator (white, pink, brown)
+### Rust + wgpu Backend (v0.2-v0.7)
 
-### Signal Processing
-- [x] Folding amplifier (Paik/Abe style)
-- [x] Soft/hard clipping
-- [x] Quantizer (Sandin style)
-- [x] Transfer function waveshaper
+- [x] 60 FPS real-time rendering with wgpu
+- [x] NTSC/PAL sync generation
+- [x] egui control panel integration
+- [x] Paned layout redesign
+- [x] Visual node editor with pan/zoom, draggable nodes, Bezier connections
+- [x] Per-node feedback textures (ping-pong buffers)
+- [x] Mixer with 8 blend modes
 
-### Colorization
-- [x] Matrix colorizer
-- [x] Threshold colorizer
-- [x] Layered colorizer (Jones style)
-- [x] Gradient mapper
+### Research Infrastructure (v0.8-v0.10)
 
-### CRT Emulation
-- [x] Phosphor persistence (per-channel)
-- [x] Beam bloom
-- [x] Scanlines
-- [x] Shadow mask
-- [x] Screen curvature
+- [x] Research orchestrator MCP server (Ollama-powered tiered models)
+- [x] Device workbench for real-time shader testing
+- [x] Component library: 5 ICs (CA3046, CA3019, CA3054, CA3080, LM311) + 2 functional blocks
+- [x] 4-layer knowledge base with 31 PDFs across 4 target devices
+- [x] Patent/datasheet/schematic/manual retrieval system
 
-### Effects
-- [x] Video feedback
-- [x] Frame delay
-- [x] Rutt/Etra displacement
-- [x] Wobbulator
+### v2 Compose Architecture (v0.11)
 
-### Mixing
-- [x] Video mixer
-- [x] Luminance keyer
-- [x] Chroma keyer
-- [x] Four-quadrant multiplier
+- [x] Shader composition — specialized WGSL per patch topology, no runtime branching
+- [x] Device shader deduplication by type
+- [x] Instance-ID based connections (stable across node removal)
+- [x] Two-tier update: topology change → recompile, param change → buffer write
+- [x] ShaderDevice trait and device registry
+- [x] TestSignalGenerator (7 modes)
+- [x] PaikAbeColorizer and PaikAbeWobulator device nodes
+
+### Multi-Pass Renderer (v0.12 — current)
+
+- [x] ProcessingMode enum: PixelProcessor vs ScanModulator
+- [x] Render plan segmentation at scan modulator boundaries
+- [x] Intermediate textures for spatial effects (wobulator samples at displaced UV)
+- [x] Reachable device filtering (only upstream devices included in render plan)
+- [x] Per-parameter LFO automation (sine wave, 3 speed presets, adjustable lo/hi range)
+- [x] Inspector moved to left panel for full-width preview
+- [x] Wobulator: H/V displacement with 7 parameters
 
 ---
 
-## Phase 2: Enhancement (IN PROGRESS)
+## Versioned Roadmap to v1.0
 
-### NTSC/PAL Signal Artifacts
-- [ ] Chroma bandwidth limiting (1.5MHz vs 4.2MHz for luma)
-- [ ] Color subcarrier encoding
-- [ ] Dot crawl simulation
-- [ ] Cross-color artifacts
-- [ ] Chroma phase errors
+### v0.13 — Cable Degradation ("Signal Has Character")
 
-### Component Modeling
-- [ ] Op-amp bandwidth limiting
-- [ ] Slew rate limiting
-- [ ] Component tolerance variation
-- [ ] Temperature coefficient simulation
-- [ ] Aging/drift models (Arrhenius)
+Different cable/connector types introduce distinct signal artifacts:
 
-### Filter Implementation
-- [ ] Wave Digital Filter (WDF) core
-- [ ] Zero-delay feedback topology
-- [ ] Lowpass/highpass/bandpass video filters
-- [ ] Deflection coil inductance modeling
+- [ ] Add `CableType` to connections: Ideal, Composite, S-Video, Component, RGB
+- [ ] Create `src/shaders/cables.wgsl` with per-cable-type degradation functions
+- [ ] Composite: chroma/luma crosstalk, ~4MHz bandwidth, dot crawl
+- [ ] S-Video: separate Y/C (no crosstalk), bandwidth-limited
+- [ ] Component/RGB: wider bandwidth, minimal degradation, cable-length HF rolloff
+- [ ] Cable type selector in inspector, colored cables in node editor
 
-### Oversampling
-- [ ] Polyphase filter implementation
-- [ ] 2x/4x/8x oversampling options
-- [ ] Anti-aliasing for nonlinear processing
+### v0.14 — Full Paik/Abe Chain ("Authentic Signal Path")
 
-### Additional Modules
-- [ ] Differentiator (Sandin style)
-- [ ] Integrator
-- [ ] Sample and hold
-- [ ] Envelope follower
-- [ ] Voltage-to-position converter (Beck style)
+The real Paik/Abe has 5 stages. Refactor the existing colorizer into separate devices:
 
----
+| Device | ProcessingMode | Description |
+|--------|---------------|-------------|
+| `PaikAbeInputMatrix` | PixelProcessor | 7-channel weighted mixing (CA3054 diff amps) |
+| `PaikAbePedColorizer` | PixelProcessor | Amplitude window colorization (CA3019 diode array) |
+| `PaikAbeFoldingAmp` | PixelProcessor | Triangle wave folding per channel |
+| `PaikAbeWobulator` | ScanModulator | UV displacement from oscillators + video modulation |
+| `PaikAbeOutputEncoder` | PixelProcessor | CA3022/CA3023 video amplifier output stage |
 
-## Phase 3: GPU Acceleration (COMPLETED)
+- [ ] Implement InputMatrix, PedColorizer, FoldingAmp, OutputEncoder devices
+- [ ] Refactor existing colorizer into separate devices
+- [ ] Create default Paik/Abe preset patch
+- [ ] Add patch save/load system (JSON)
 
-### Rust + wgpu Backend
-- [x] WGSL shader composition system (v2 compose architecture)
-- [x] Fullscreen triangle rendering (no vertex buffer)
-- [x] Specialized shader per patch topology (no runtime branching)
-- [x] Two-tier update: recompile on topology change, uniform update on param change
+### v0.15 — CRT Monitor ("Phosphors Glow")
 
-### Performance Targets
-- [x] 60fps on mid-range GPU (verified on RTX 2060)
-- [ ] 4K @ 30fps on high-end GPU
-- [x] Sub-frame latency for real-time use
+A `DisplayOutput` device with its own render pass and feedback pair for temporal persistence:
 
-### Hybrid Processing
-- [x] CPU for control logic and timing
-- [x] GPU for pixel processing via composed WGSL shaders
-- [x] Efficient CPU-GPU transfer via uniform buffers
+- [ ] P22 phosphor persistence per-channel (R=0.85, G=0.75, B=0.65 decay)
+- [ ] Beam width, bloom amount/radius
+- [ ] Scanline count and weight
+- [ ] Screen curvature, corner radius
+- [ ] Shadow mask type (none/shadow mask/aperture grille) and strength
+- [ ] Ping-pong feedback pair for persistence across frames
 
----
+### v0.16 — Camcorder + Feedback ("The Loop Closes")
 
-## Phase 4: Control Systems
+An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 
-### MIDI Support
-- [ ] CC mapping to parameters
-- [ ] Note input for triggers
-- [ ] Clock sync
-- [ ] MIDI learn functionality
+- [ ] AGC target and speed (auto gain control)
+- [ ] White balance, gamma curve
+- [ ] Sensor bloom, noise floor
+- [ ] Rolling shutter (scan-line temporal offset)
+- [ ] Optical connection type (dashed line, lens icon in UI)
+- [ ] CRT → Camera → Signal Chain → CRT feedback loop
 
-### OSC Support
-- [ ] Parameter addressing
-- [ ] Bidirectional communication
-- [ ] TouchOSC template
+### v0.17-v0.19 — Additional Devices + Polish
 
-### Ableton Link
-- [ ] Tempo synchronization
-- [ ] Phase alignment
-- [ ] Quantum awareness
+- [ ] Rutt/Etra displacement (ScanModulator)
+- [ ] Sandin Image Processor devices (amplitude classifier, four-quadrant multiplier)
+- [ ] Jones Colorizer devices (diode/layered mixing, multi-level keying)
+- [ ] Multiple CRT + camera support
+- [ ] Preset library with classic video art patches
 
-### External CV (Future)
-- [ ] Audio interface input
-- [ ] DC-coupled support
-- [ ] Calibration system
+### v1.0 — Release
+
+- [ ] Complete documentation
+- [ ] Cross-GPU testing (Vulkan, Metal, DX12)
+- [ ] Performance benchmarks at various resolutions
+- [ ] Stable patch file format
+- [ ] User guide
 
 ---
 
-## Phase 5: User Interface (PARTIALLY COMPLETED)
+## Future Phases (Post v1.0)
 
-### Node-Based Patching
-- [x] Visual module representation (draggable nodes with category-colored headers)
-- [x] Bezier curve cable routing between ports
-- [x] Device parameter inspector panel with dynamic sliders
-- [x] Device palette with categorized device buttons
-- [ ] Preset management / patch save/load
+### Control Systems
 
-### Visualization
-- [ ] Oscilloscope view
-- [ ] Vectorscope
-- [ ] Waveform monitor
-- [ ] Signal flow visualization
+- [ ] MIDI CC mapping with learn functionality
+- [ ] OSC parameter addressing
+- [ ] Audio reactivity
+- [ ] External CV via DC-coupled audio interface
 
-### Preset System
-- [ ] Patch save/load (JSON)
-- [ ] Preset morphing
-- [ ] Randomization
-- [ ] Favorites/tagging
+### Signal Artifacts
 
----
+- [ ] NTSC/PAL color subcarrier encoding artifacts
+- [ ] Chroma bandwidth limiting, dot crawl, cross-color
+- [ ] Op-amp bandwidth and slew rate limiting
+- [ ] Component tolerance variation and temperature drift
 
-## Phase 6: Advanced Features
+### Advanced Features
 
-### Neural Network Integration
-- [ ] Circuit behavior learning from SPICE
-- [ ] Real-time inference for complex circuits
-- [ ] Adaptive feedback stability
-- [ ] Aesthetic-guided parameter exploration
-
-### Temporal Effects
-- [ ] Arbitrary delay networks
-- [ ] Time reversal
-- [ ] Time stretching
-- [ ] Frame interpolation
-
-### Spectral Processing
-- [ ] FFT-based video effects
-- [ ] Spectral filtering
-- [ ] Convolution effects
-- [ ] Phase vocoder techniques
-
-### Collaboration
-- [ ] WebRTC video sharing
-- [ ] Shared patch state
-- [ ] Multi-user jam sessions
+- [ ] Video input (camera, file)
+- [ ] Recording/export
 - [ ] NDI/Syphon/Spout output
+- [ ] Oscilloscope/vectorscope/waveform monitor views
+- [ ] Patch preset morphing and randomization
 
 ---
 
-## Research Tasks
-
-### Documentation to Study
-- [ ] LZX Industries Cadet schematics (GitHub)
-- [ ] Sandin Image Processor documentation
-- [ ] Jones Colorizer circuit analysis
-- [ ] Rutt/Etra patent documentation
-- [ ] CRT phosphor datasheets
-- [ ] NTSC/PAL encoding specifications
-
-### Technical Papers
-- [ ] Kurt Werner WDF dissertation
-- [ ] Zavalishin filter theory
-- [ ] Analog circuit modeling literature
-- [ ] Video synthesis history papers
-
-### Reference Implementations
-- [ ] Max/MSP/Jitter video objects
-- [ ] TouchDesigner feedback techniques
-- [ ] Hardware synthesizer demos
-- [ ] Historical footage analysis
-
----
-
-## Quality Metrics
-
-### Visual Accuracy
-- Compare output to actual hardware captures
-- Side-by-side A/B testing
-- Expert review from video synthesis community
-
-### Performance Benchmarks
-- Frame time measurements
-- Memory usage profiling
-- CPU/GPU utilization
-
-### Test Coverage
-- Unit tests for all modules
-- Integration tests for signal paths
-- Visual regression testing
-
----
-
-## File Structure Evolution
+## Project Structure
 
 ```
-analog/
-├── src/
-│   ├── core/           # Types, timing, utilities
-│   ├── modules/        # Processing modules
-│   ├── synth/          # Orchestration
-│   ├── gpu/            # WebGL shaders (Phase 3)
-│   ├── control/        # MIDI, OSC (Phase 4)
-│   └── ui/             # Interface components (Phase 5)
-├── demo/               # Browser demo
-├── docs/               # Documentation
-├── presets/            # Preset patches
-├── tests/              # Test suites
-└── research/           # Reference materials
+src/
+├── core/
+│   ├── timing.rs              # NTSC/PAL sync generation
+│   ├── signal.rs              # Signal types, voltage standards
+│   └── component.rs           # Analog IC models (op-amp, transistor, diode, RC)
+├── devices/
+│   ├── generators.rs          # TestSignalGenerator (7 pattern modes)
+│   └── paik_abe/
+│       ├── mod.rs             # PaikAbeColorizer, PaikAbeWobulator
+│       └── colorizer.wgsl     # Colorizer shader (6-stage folding amp)
+├── gpu/
+│   ├── shader_composer.rs     # ShaderDevice trait, DevicePatch, multi-pass compose
+│   └── renderer.rs            # wgpu + egui renderer, multi-pass pipeline
+├── shaders/
+│   ├── common.wgsl            # Vertex shader, timing uniform, utility functions
+│   └── components.wgsl        # Op-amp, transistor, diode, waveshaping models
+├── ui/
+│   ├── device_registry.rs     # Device factory and palette categories
+│   └── node_editor.rs         # Visual node editor, inspector, LFO automation
+└── main.rs                    # Application entry, 3-panel layout, event loop
+
+tools/
+├── research-orchestrator/     # MCP server for AI-assisted research
+└── device-workbench/          # Real-time WGSL shader testing
+
+research/
+├── components/                # IC models and functional blocks
+│   ├── ics/                   # CA3046, CA3019, CA3054, CA3080, LM311
+│   └── functional/            # Folding amplifier, wobbulator
+├── devices/                   # Per-device documentation
+└── provenance.db              # Document provenance tracking
 ```
 
 ---
 
 ## Contributing
 
-When adding new features:
+When adding new devices:
 
-1. Start with the technical reference document
-2. Research the original analog implementation
-3. Create a design document explaining the approach
-4. Implement with comprehensive tests
-5. Document parameters and behavior
-6. Add to demo presets
-
-Each module should include:
-- Type-safe interfaces
-- Default parameter values
-- CV modulation support
-- Reset functionality
-- Clear documentation
+1. Research the original analog implementation (patents, schematics, service manuals)
+2. Identify the ICs and extract transfer functions from datasheets
+3. Implement the `ShaderDevice` trait with appropriate `ProcessingMode`
+4. Test in the device workbench before integrating
+5. Register in `device_registry.rs` with the correct category
+6. Document parameters and behavior

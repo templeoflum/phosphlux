@@ -314,9 +314,9 @@ Multiple operations required careful two-pass approaches:
 
 ---
 
-## Current State
+## State at v0.6 (Pre-Compose Architecture)
 
-### What Works
+### What Worked
 - Real-time 60 FPS rendering
 - Full feedback effect pipeline with 8 parameters
 - Luma keying with adjustable thresholds
@@ -343,7 +343,7 @@ Multiple operations required careful two-pass approaches:
 
 ---
 
-## Roadmap
+## Roadmap (v0.6 era — see DEVELOPMENT_ROADMAP.md for current)
 
 ### ✅ COMPLETE: GPU Signal Routing (Phase 3)
 The node graph now controls real-time GPU rendering:
@@ -426,23 +426,7 @@ This allows single `queue.write_buffer()` call per frame.
 
 ---
 
-## Files Reference
-
-| File | Purpose |
-|------|---------|
-| `src/main.rs` | Application entry, event loop, egui integration |
-| `src/gpu/renderer.rs` | wgpu setup, shader pipeline, feedback buffers |
-| `src/gpu/shaders/composite.wgsl` | Main synthesis shader |
-| `src/gpu/shaders/feedback.wgsl` | Feedback processing shader |
-| `src/gpu/shaders/crt.wgsl` | CRT emulation shader |
-| `src/core/timing.rs` | NTSC/PAL sync generation |
-| `src/ui/controls.rs` | Parameter structures |
-| `src/ui/patch.rs` | Node graph data structures |
-| `docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md` | Research document |
-
----
-
-## Files Reference (Updated)
+## Files Reference (v0.6)
 
 | File | Purpose |
 |------|---------|
@@ -539,18 +523,6 @@ Local Ollama models handle heavy lifting (research, code drafts, component extra
 2. **HIGH**: Oscilloscope Art, Beck DVS, Jones Colorizer, LZX Cadet, Edirol V4
 
 ---
-
-## Version History
-
-- **v0.1**: TypeScript prototype (2 FPS)
-- **v0.2**: Rust + wgpu rewrite (60 FPS)
-- **v0.3**: egui control panel integration
-- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
-- **v0.5**: Visual node editor with full UX
-- **v0.6**: GPU signal routing — node graph compiles to GPU operations
-- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
-- **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
-- **v0.9**: Swarm agent system — multi-agent component research and WGSL model generation
 
 ---
 
@@ -796,19 +768,6 @@ Hard threshold keying with adjustable window width.
 | `research/RESEARCH_INDEX.md` | Master research tracking |
 
 ---
-
-## Version History
-
-- **v0.1**: TypeScript prototype (2 FPS)
-- **v0.2**: Rust + wgpu rewrite (60 FPS)
-- **v0.3**: egui control panel integration
-- **v0.4**: Paned layout redesign + renamed to **Phosphlux**
-- **v0.5**: Visual node editor with full UX
-- **v0.6**: GPU signal routing — node graph compiles to GPU operations
-- **v0.7**: Analog routing architecture — per-node Frame Buffers, blend modes, codebase cleanup
-- **v0.8**: Research orchestrator — tiered MCP server with Claude as quality gate
-- **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking, component library with CA3046/CA3080/LM311 models, device workbench for shader testing
-- **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator; Paik/Abe core complete
 
 ---
 
@@ -1121,7 +1080,7 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking
 - **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator
 - **v0.11**: v2 node editor — compose-based architecture, shader composition, device registry
-- **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator spatial displacement
+- **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator H/V spatial displacement, LFO automation, reachable device filtering, routing bug fix
 
 ---
 

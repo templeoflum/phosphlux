@@ -29,6 +29,7 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 - **Draggable nodes** with category-colored headers
 - **Bezier curve connections** between sockets
 - **Real-time parameter adjustment** via inspector panel
+- **LFO automation** per parameter (sine wave, 3 speed presets, adjustable lo/hi range)
 - **Immediate input response** - no drag threshold lag
 
 ### Device Types
@@ -38,14 +39,16 @@ Phosphlux authentically recreates the complete history of electronic image-makin
 
 **Paik/Abe Video Synthesizer**
 - Colorizer — 6-parameter folding amplifier with per-channel gain, fold depth, saturation, slew
-- Wobulator — Horizontal displacement with frequency, amplitude, phase control
+- Wobulator — H/V scan displacement with frequency, amplitude, phase, video modulation, speed control (7 parameters)
 
 **Output**
 - Any device can be designated as the output device
 - Preview with aspect ratio lock (Free, 1:1, 4:3, 16:9, 3:4, 9:16, 2.35:1)
 
-### Compose-Based Shader System
-Each patch topology generates a specialized WGSL shader at edit-time:
+### Multi-Pass Compose Shader System
+Each patch topology generates specialized WGSL shaders at edit-time:
+- **Multi-pass rendering** — pixel processors compose into single-pass segments; scan modulators (wobulator) get their own render pass with intermediate textures
+- **Reachable device filtering** — only devices upstream of the output are included in the render plan
 - No runtime branching — only active devices are in the shader
 - Device shader code is deduplicated by type (multiple instances share one function)
 - Parameter uniform buffer updated per-frame without recompilation
@@ -61,7 +64,7 @@ Each patch topology generates a specialized WGSL shader at edit-time:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/phosphlux.git
+git clone https://github.com/templeoflum/phosphlux.git
 cd phosphlux
 
 # Build and run
@@ -81,26 +84,25 @@ cargo run --release
 
 ### Interface
 
-The application uses a 4-panel layout:
+The application uses a 3-panel layout:
 
 ```
-+------------+---------------------------+-------------+
-|            |                           |   PREVIEW   |
-|   NODE     |                           |   [4:3]     |
-|  PALETTE   |     NODE GRAPH EDITOR     +-------------+
-|            |                           |  INSPECTOR  |
-|            |                           |             |
-+------------+---------------------------+-------------+
++--------------------+---------------------------+-----------+
+|   NODE PALETTE     |                           |           |
++--------------------+                           |  PREVIEW  |
+|                    |     NODE GRAPH EDITOR     |  [4:3]    |
+|   INSPECTOR        |                           |           |
+|   (selected node)  |                           |           |
++--------------------+---------------------------+-----------+
 ```
 
-- **Left**: Node palette - drag nodes onto canvas
+- **Left**: Node palette (top) + inspector with parameter sliders and LFO controls (bottom)
 - **Center**: Node graph editor with pan/zoom
-- **Top Right**: Video preview with aspect ratio selector
-- **Bottom Right**: Inspector showing selected node parameters
+- **Right**: Video preview with aspect ratio selector, full available height
 
 ## Architecture
 
-Phosphlux v2 uses a **compose-based** shader architecture: each patch topology gets a specialized WGSL shader with no runtime branching. When the graph changes, the shader is recomposed and the pipeline recompiled (~5-20ms). When only parameters change, the uniform buffer is updated (sub-ms).
+Phosphlux v2 uses a **multi-pass compose** shader architecture. The device graph is segmented into render passes: consecutive pixel processors compose into a single WGSL shader, while scan modulators (wobulator, displacement effects) get their own render pass with intermediate textures for spatial sampling. Only devices upstream of the output device are included (reachable filtering). When the graph changes, the render plan is rebuilt and pipelines recompiled. When only parameters change, uniform buffers are updated (sub-ms).
 
 ```
 src/
@@ -111,26 +113,27 @@ src/
 ├── devices/
 │   ├── generators.rs          # TestSignalGenerator (7 pattern modes)
 │   └── paik_abe/
-│       ├── mod.rs             # PaikAbeColorizer, PaikAbeWobulator
+│       ├── mod.rs             # PaikAbeColorizer (PixelProcessor), PaikAbeWobulator (ScanModulator)
 │       └── colorizer.wgsl     # Colorizer shader (6-stage folding amp)
 ├── gpu/
-│   ├── shader_composer.rs     # ShaderDevice trait, DevicePatch, compose system
-│   └── renderer.rs            # wgpu + egui renderer, pipeline management
+│   ├── shader_composer.rs     # ShaderDevice trait, DevicePatch, multi-pass compose, render plan
+│   └── renderer.rs            # wgpu + egui renderer, multi-pass pipeline, intermediate textures
 ├── shaders/
 │   ├── common.wgsl            # Vertex shader, timing uniform, utility functions
 │   └── components.wgsl        # Op-amp, transistor, diode, waveshaping models
 ├── ui/
 │   ├── device_registry.rs     # Device factory and palette categories
-│   └── node_editor.rs         # Visual node editor, inspector, connections
+│   └── node_editor.rs         # Visual node editor, inspector, LFO automation
 └── main.rs                    # Application entry, 3-panel layout, event loop
 ```
 
 ### GPU Pipeline
 
-1. **Shader Composition**: `ShaderComposer` topologically sorts the device graph and generates a single WGSL shader with straight-line code — no runtime branching
-2. **Pipeline Recompile**: On topology change, the render pipeline is rebuilt with the new shader module
-3. **Parameter Update**: On slider changes, device parameter values are written to the `DeviceParams` uniform buffer
-4. **Render Pass**: Fullscreen triangle renders composed shader to output texture; egui overlay painted on the surface
+1. **Graph Analysis**: `ShaderComposer` topologically sorts the device graph, filters to reachable devices, and segments into render passes at scan modulator boundaries
+2. **Shader Composition**: Each segment gets a specialized WGSL shader with straight-line code — no runtime branching. Pixel processor segments compose multiple devices into one pass; scan modulators get their own pass with texture sampling.
+3. **Pipeline Recompile**: On topology change, per-segment pipelines are rebuilt with new shader modules and intermediate textures allocated
+4. **Parameter Update**: On slider changes, per-segment uniform buffers are updated (sub-ms)
+5. **Multi-Pass Render**: Segments execute in order — each fullscreen triangle pass renders to its output texture; the final segment renders to the preview; egui overlay painted on the surface
 
 ## Research & Development Tools
 
@@ -220,7 +223,9 @@ See [DEVLOG.md](DEVLOG.md) for detailed development history and technical decisi
 
 See [docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md](docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md) for comprehensive research on analog video synthesis techniques.
 
-See [docs/HISTORICAL_EMULATION_PLAN.md](docs/HISTORICAL_EMULATION_PLAN.md) for the research-first emulation roadmap.
+See [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) for the v0.13-v1.0 development roadmap.
+
+See [docs/HISTORICAL_EMULATION_PLAN.md](docs/HISTORICAL_EMULATION_PLAN.md) for the research-first emulation plan.
 
 ### Building
 
@@ -249,9 +254,11 @@ Five foundational video synthesis devices, in order:
 
 See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed component requirements and milestones.
 
-### Infrastructure Complete
-- [x] v2 compose-based shader architecture (specialized shader per patch)
+### Infrastructure Complete (v0.12)
+- [x] Multi-pass compose shader architecture (segments at scan modulator boundaries)
+- [x] Reachable device filtering (only upstream devices rendered)
 - [x] Visual node editor with pan/zoom, device palette, inspector
+- [x] Per-parameter LFO automation (sine wave, 3 speeds, adjustable range)
 - [x] GPU renderer with two-tier update (recompile vs param update)
 - [x] Device registry and ShaderDevice trait system
 - [x] Test signal generator (7 modes)
@@ -265,25 +272,27 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] CA3019 diode array (PED Control colorizer)
 - [x] CA3054 dual diff amp (matrix mixer, video keyer)
 - [x] Folding amplifier (nonlinear waveshaper)
-- [x] Wobbulator (scan displacement)
-- [x] Colorizer device node (v2 compose system)
-- [x] Wobulator device node (v2 compose system)
+- [x] Wobbulator (scan displacement with texture sampling)
+- [x] Colorizer device node (pixel processor, single-pass composable)
+- [x] Wobulator device node (scan modulator, own render pass)
 
-### Future
-- [ ] Video input: Camera and file support
-- [ ] Audio reactivity
-- [ ] MIDI/OSC control
+### Next: v0.13-v1.0 Roadmap
+- [ ] Cable/connector signal degradation (composite, S-Video, component, RGB)
+- [ ] Full Paik/Abe 5-stage chain (input matrix, PED colorizer, folding amp, wobulator, output encoder)
+- [ ] CRT monitor device (phosphor persistence, scanlines, curvature, bloom)
+- [ ] Camcorder device (AGC, rolling shutter) + CRT→camera feedback loop
 - [ ] Patch save/load
+- [ ] Additional devices: Sandin IP, Rutt/Etra, Jones Colorizer
+- [ ] MIDI/OSC control
+- [ ] Video input: camera and file support
 
 ## Performance Notes
 
-The transition from TypeScript prototype to Rust achieved a **30x performance improvement** (2 FPS to 60 FPS):
-
-- All pixel processing in GPU shaders
-- Uniform buffers minimize CPU-GPU transfer
-- Ping-pong framebuffers enable stable feedback
-- Graph compiler with topological sort
-- Storage buffer pipeline for dynamic operation dispatch
+- All pixel processing in GPU shaders via composed WGSL
+- Multi-pass render segments with intermediate textures for spatial effects
+- Per-segment uniform buffers minimize CPU-GPU transfer
+- Reachable device filtering prevents unnecessary render passes
+- Two-tier update: topology change → recompile, param change → buffer write
 
 ## The Name
 
