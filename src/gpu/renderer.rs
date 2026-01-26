@@ -3,6 +3,10 @@
 //! Manages the wgpu device, surface, and render pipeline.
 //! Unlike v1's fixed pipeline, v2 recompiles the pipeline when
 //! the patch topology changes (compose-based architecture).
+//!
+//! v2.1: Multi-pass rendering with segment pipelines.
+//! When a patch contains ScanModulators, the renderer breaks
+//! the signal chain into multiple render passes with intermediate textures.
 
 use std::sync::Arc;
 use bytemuck::Zeroable;
@@ -22,6 +26,10 @@ struct Timing {
     _p3: f32, _p4: f32, _p5: f32, _p6: f32,
 }
 @group(0) @binding(0) var<uniform> timing: Timing;
+
+// Dummy group 1 (empty) and group 2 (params placeholder)
+struct DeviceParams { _pad0: f32, _pad1: f32, _pad2: f32, _pad3: f32, }
+@group(2) @binding(0) var<uniform> params: DeviceParams;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -54,6 +62,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+// ─── Segment Pipeline ────────────────────────────────────────
+
+/// A compiled render pipeline for one segment of the render plan.
+struct SegmentPipeline {
+    pipeline: wgpu::RenderPipeline,
+    params_buffer: wgpu::Buffer,
+    params_bind_group: wgpu::BindGroup,
+    /// Group 1 bind group: empty (no input texture) or texture+sampler
+    input_bind_group: wgpu::BindGroup,
+    param_layout: ParamLayout,
+}
+
+// ─── Renderer ────────────────────────────────────────────────
+
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -61,20 +83,34 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     pub size: PhysicalSize<u32>,
 
-    // Pipeline — recreated on topology change
-    pipeline: wgpu::RenderPipeline,
+    // Fallback pipeline (used before first recompile)
+    fallback_pipeline: wgpu::RenderPipeline,
+    fallback_params_buffer: wgpu::Buffer,
+    fallback_params_bind_group: wgpu::BindGroup,
+
+    // Multi-pass segment pipelines (populated after recompile)
+    segment_pipelines: Vec<SegmentPipeline>,
 
     // Bind group layouts
     timing_bg_layout: wgpu::BindGroupLayout,
-    empty_bg_layout: wgpu::BindGroupLayout,  // Placeholder for group 1 (feedback textures)
+    empty_bg_layout: wgpu::BindGroupLayout,
+    texture_input_bg_layout: wgpu::BindGroupLayout,
     params_bg_layout: wgpu::BindGroupLayout,
 
-    // Bind groups + Buffers
+    // Global bind groups + buffers
     timing_bind_group: wgpu::BindGroup,
     timing_buffer: wgpu::Buffer,
     empty_bind_group: wgpu::BindGroup,
-    params_bind_group: wgpu::BindGroup,
-    params_buffer: wgpu::Buffer,
+
+    // Shared sampler for intermediate textures
+    sampler: wgpu::Sampler,
+
+    // Intermediate textures for multi-pass rendering
+    intermediate_textures: Vec<(wgpu::Texture, wgpu::TextureView)>,
+
+    // Default 1x1 black texture (used when scan modulator has no upstream)
+    black_texture_view: wgpu::TextureView,
+    black_bind_group: wgpu::BindGroup,
 
     // Output texture for egui preview display
     output_texture: wgpu::Texture,
@@ -82,8 +118,7 @@ pub struct Renderer {
     pub output_texture_id: Option<egui::TextureId>,
     output_size: (u32, u32),
 
-    // Composition state
-    current_param_layout: Option<ParamLayout>,
+    // State
     pub shader_error: Option<String>,
 }
 
@@ -146,40 +181,67 @@ impl Renderer {
         // === Bind group layouts ===
 
         // Group 0: Timing uniform
-        let timing_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Timing BG Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let timing_bg_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Timing BG Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
-        // Group 1: Empty placeholder (for feedback textures later)
-        let empty_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Empty BG Layout"),
-            entries: &[],
-        });
+        // Group 1 (empty): Placeholder for segments without input textures
+        let empty_bg_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Empty BG Layout"),
+                entries: &[],
+            });
+
+        // Group 1 (texture): For segments that read from a previous segment's output
+        let texture_input_bg_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Input BG Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         // Group 2: Params uniform
-        let params_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Params BG Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let params_bg_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Params BG Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         // === Buffers ===
         let timing_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -189,11 +251,12 @@ impl Renderer {
         });
 
         // Default params buffer (16 bytes minimum for uniform alignment)
-        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Params Buffer"),
-            contents: &[0u8; 16],
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let fallback_params_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Fallback Params Buffer"),
+                contents: &[0u8; 16],
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
         // === Bind groups ===
         let timing_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -211,35 +274,91 @@ impl Renderer {
             entries: &[],
         });
 
-        let params_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Params BG"),
+        let fallback_params_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Fallback Params BG"),
             layout: &params_bg_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: params_buffer.as_entire_binding(),
+                resource: fallback_params_buffer.as_entire_binding(),
             }],
         });
 
-        // === Initial pipeline (fallback) ===
-        let pipeline = Self::create_pipeline_from_wgsl(
+        // === Sampler for intermediate textures ===
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Segment Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // === Default 1x1 black texture (for scan modulators with no upstream) ===
+        let black_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Black 1x1"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: surface_format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // Write black pixel
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &black_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[0u8, 0, 0, 255], // BGRA black
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let black_texture_view =
+            black_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let black_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Black Texture BG"),
+            layout: &texture_input_bg_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&black_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        // === Fallback pipeline ===
+        let fallback_pipeline = Self::create_pipeline(
             &device,
             FALLBACK_SHADER,
-            &config,
+            surface_format,
             &timing_bg_layout,
             &empty_bg_layout,
-            // Fallback shader doesn't use group 2, use timing layout as dummy
-            &timing_bg_layout,
-            true, // fallback mode: only groups 0
+            &params_bg_layout,
         );
 
         // === Output texture for egui ===
         let output_size = (320, 240);
-        let (output_texture, output_view) = Self::create_output_texture(
-            &device,
-            output_size.0,
-            output_size.1,
-            surface_format,
-        );
+        let (output_texture, output_view) =
+            Self::create_output_texture(&device, output_size.0, output_size.1, surface_format);
 
         Self {
             surface,
@@ -247,50 +366,46 @@ impl Renderer {
             queue,
             config,
             size,
-            pipeline,
+            fallback_pipeline,
+            fallback_params_buffer,
+            fallback_params_bind_group,
+            segment_pipelines: Vec::new(),
             timing_bg_layout,
             empty_bg_layout,
+            texture_input_bg_layout,
             params_bg_layout,
             timing_bind_group,
             timing_buffer,
             empty_bind_group,
-            params_bind_group,
-            params_buffer,
+            sampler,
+            intermediate_textures: Vec::new(),
+            black_texture_view,
+            black_bind_group,
             output_texture,
             output_view,
             output_texture_id: None,
             output_size,
-            current_param_layout: None,
             shader_error: None,
         }
     }
 
-    /// Create a render pipeline from WGSL source
-    fn create_pipeline_from_wgsl(
+    /// Create a render pipeline from WGSL source with specified group layouts.
+    fn create_pipeline(
         device: &wgpu::Device,
         wgsl: &str,
-        config: &wgpu::SurfaceConfiguration,
+        format: wgpu::TextureFormat,
         timing_layout: &wgpu::BindGroupLayout,
-        empty_layout: &wgpu::BindGroupLayout,
+        group1_layout: &wgpu::BindGroupLayout,
         params_layout: &wgpu::BindGroupLayout,
-        fallback: bool,
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Composed Shader"),
+            label: Some("Segment Shader"),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        let bind_group_layouts: Vec<&wgpu::BindGroupLayout> = if fallback {
-            // Fallback only uses group 0
-            vec![timing_layout]
-        } else {
-            // Full: groups 0, 1, 2
-            vec![timing_layout, empty_layout, params_layout]
-        };
-
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &bind_group_layouts,
+            bind_group_layouts: &[timing_layout, group1_layout, params_layout],
             push_constant_ranges: &[],
         });
 
@@ -300,14 +415,14 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[], // No vertex buffer — fullscreen triangle via vertex_index
+                buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
+                    format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -355,51 +470,47 @@ impl Renderer {
         (texture, view)
     }
 
-    /// Recompile the pipeline from a device patch
+    /// Create an intermediate texture for multi-pass rendering.
+    fn create_intermediate_texture(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        index: usize,
+    ) -> (wgpu::Texture, wgpu::TextureView) {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("Intermediate Texture {}", index)),
+            size: wgpu::Extent3d {
+                width: width.max(1),
+                height: height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        (texture, view)
+    }
+
+    // ─── Recompile ───────────────────────────────────────────
+
+    /// Recompile the pipeline from a device patch.
+    /// Uses compose_plan() for multi-pass rendering when scan modulators are present.
     pub fn recompile(&mut self, patch: &DevicePatch, composer: &mut ShaderComposer) {
-        match composer.compose(patch) {
-            Ok(composed) => {
-                // Create new params buffer sized to the layout
-                let param_size = composed.param_layout.size.max(16);
-                let param_values = patch.collect_param_values(&composed.param_layout);
-                let param_bytes = bytemuck::cast_slice(&param_values);
-
-                self.params_buffer = self.device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor {
-                        label: Some("Params Buffer"),
-                        contents: param_bytes,
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    },
-                );
-
-                // Recreate params bind group with new buffer
-                self.params_bind_group = self.device.create_bind_group(
-                    &wgpu::BindGroupDescriptor {
-                        label: Some("Params BG"),
-                        layout: &self.params_bg_layout,
-                        entries: &[wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: self.params_buffer.as_entire_binding(),
-                        }],
-                    },
-                );
-
-                // Create new pipeline
-                self.pipeline = Self::create_pipeline_from_wgsl(
-                    &self.device,
-                    &composed.wgsl_source,
-                    &self.config,
-                    &self.timing_bg_layout,
-                    &self.empty_bg_layout,
-                    &self.params_bg_layout,
-                    false,
-                );
-
-                self.current_param_layout = Some(composed.param_layout.clone());
+        match composer.compose_plan(patch) {
+            Ok(plan) => {
+                self.build_segment_pipelines(&plan, patch);
                 self.shader_error = None;
-
-                log::info!("Shader recompiled: {} bytes WGSL, {} bytes params",
-                    composed.wgsl_source.len(), param_size);
+                log::info!(
+                    "Recompiled: {} segment(s), {} intermediate texture(s)",
+                    self.segment_pipelines.len(),
+                    self.intermediate_textures.len()
+                );
             }
             Err(e) => {
                 self.shader_error = Some(format!("{}", e));
@@ -408,16 +519,148 @@ impl Renderer {
         }
     }
 
-    /// Update parameter values without recompiling
-    pub fn update_params(&mut self, patch: &DevicePatch) {
-        if let Some(layout) = &self.current_param_layout {
-            let values = patch.collect_param_values(layout);
-            let bytes = bytemuck::cast_slice(&values);
-            self.queue.write_buffer(&self.params_buffer, 0, bytes);
+    /// Build per-segment pipelines and intermediate textures from a render plan.
+    fn build_segment_pipelines(
+        &mut self,
+        plan: &crate::gpu::shader_composer::RenderPlan,
+        patch: &DevicePatch,
+    ) {
+        self.segment_pipelines.clear();
+        self.intermediate_textures.clear();
+
+        let num_segments = plan.segments.len();
+
+        // Create intermediate textures (one per segment except the last)
+        let num_intermediates = if num_segments > 1 {
+            num_segments - 1
+        } else {
+            0
+        };
+        for i in 0..num_intermediates {
+            let (tex, view) = Self::create_intermediate_texture(
+                &self.device,
+                self.output_size.0,
+                self.output_size.1,
+                self.config.format,
+                i,
+            );
+            self.intermediate_textures.push((tex, view));
+        }
+
+        // Build a pipeline for each segment
+        for (i, segment) in plan.segments.iter().enumerate() {
+            // Choose group 1 layout based on whether this segment needs input texture
+            let group1_layout = if segment.needs_input_texture {
+                &self.texture_input_bg_layout
+            } else {
+                &self.empty_bg_layout
+            };
+
+            // Create pipeline
+            let pipeline = Self::create_pipeline(
+                &self.device,
+                &segment.wgsl_source,
+                self.config.format,
+                &self.timing_bg_layout,
+                group1_layout,
+                &self.params_bg_layout,
+            );
+
+            // Create params buffer
+            let param_values = patch.collect_param_values(&segment.param_layout);
+            let param_bytes = bytemuck::cast_slice(&param_values);
+            let params_buffer =
+                self.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Segment {} Params Buffer", i)),
+                        contents: param_bytes,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    });
+
+            let params_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&format!("Segment {} Params BG", i)),
+                layout: &self.params_bg_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params_buffer.as_entire_binding(),
+                }],
+            });
+
+            // Create input bind group
+            let input_bind_group = if segment.needs_input_texture {
+                if i > 0 {
+                    // Bind previous segment's output texture
+                    let prev_view = &self.intermediate_textures[i - 1].1;
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some(&format!("Segment {} Input BG", i)),
+                        layout: &self.texture_input_bg_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(prev_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                        ],
+                    })
+                } else {
+                    // First segment but needs input: use black texture
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Segment 0 Black Input BG"),
+                        layout: &self.texture_input_bg_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(
+                                    &self.black_texture_view,
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                        ],
+                    })
+                }
+            } else {
+                // No input texture: use empty bind group
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some(&format!("Segment {} Empty Input BG", i)),
+                    layout: &self.empty_bg_layout,
+                    entries: &[],
+                })
+            };
+
+            self.segment_pipelines.push(SegmentPipeline {
+                pipeline,
+                params_buffer,
+                params_bind_group,
+                input_bind_group,
+                param_layout: segment.param_layout.clone(),
+            });
         }
     }
 
-    /// Render composed shader to output texture
+    // ─── Parameter Updates ───────────────────────────────────
+
+    /// Update parameter values without recompiling.
+    /// Updates each segment's params buffer independently.
+    pub fn update_params(&mut self, patch: &DevicePatch) {
+        for segment in &self.segment_pipelines {
+            let values = patch.collect_param_values(&segment.param_layout);
+            let bytes = bytemuck::cast_slice(&values);
+            self.queue
+                .write_buffer(&segment.params_buffer, 0, bytes);
+        }
+    }
+
+    // ─── Rendering ───────────────────────────────────────────
+
+    /// Render composed shader to output texture.
+    /// Executes all segments in order, writing to intermediate textures
+    /// and finally to the output texture.
     pub fn render_to_texture(&mut self, timing: TimingUniforms) {
         // Update timing uniform
         self.queue.write_buffer(
@@ -426,38 +669,70 @@ impl Renderer {
             bytemuck::cast_slice(&[timing]),
         );
 
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render To Texture"),
-            },
-        );
-
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Synth Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.output_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
             });
 
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.timing_bind_group, &[]);
+        if self.segment_pipelines.is_empty() {
+            // Fallback: use fallback pipeline
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Fallback Synth Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.output_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
 
-            // Only set groups 1 and 2 if we have a compiled shader (not fallback)
-            if self.current_param_layout.is_some() {
+                pass.set_pipeline(&self.fallback_pipeline);
+                pass.set_bind_group(0, &self.timing_bind_group, &[]);
                 pass.set_bind_group(1, &self.empty_bind_group, &[]);
-                pass.set_bind_group(2, &self.params_bind_group, &[]);
+                pass.set_bind_group(2, &self.fallback_params_bind_group, &[]);
+                pass.draw(0..3, 0..1);
             }
+        } else {
+            // Multi-pass rendering: execute segments in order
+            let num_segments = self.segment_pipelines.len();
+            for i in 0..num_segments {
+                let target_view = if i < num_segments - 1 {
+                    &self.intermediate_textures[i].1
+                } else {
+                    &self.output_view
+                };
 
-            pass.draw(0..3, 0..1); // Fullscreen triangle
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some(&format!("Segment {} Pass", i)),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: target_view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+
+                    let segment = &self.segment_pipelines[i];
+                    pass.set_pipeline(&segment.pipeline);
+                    pass.set_bind_group(0, &self.timing_bind_group, &[]);
+                    pass.set_bind_group(1, &segment.input_bind_group, &[]);
+                    pass.set_bind_group(2, &segment.params_bind_group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -478,7 +753,12 @@ impl Renderer {
     }
 
     /// Resize the output texture for the preview pane
-    pub fn resize_output(&mut self, width: u32, height: u32, egui_renderer: &mut egui_wgpu::Renderer) {
+    pub fn resize_output(
+        &mut self,
+        width: u32,
+        height: u32,
+        egui_renderer: &mut egui_wgpu::Renderer,
+    ) {
         if width == 0 || height == 0 {
             return;
         }
@@ -487,15 +767,61 @@ impl Renderer {
         }
 
         self.output_size = (width, height);
-        let (texture, view) = Self::create_output_texture(
-            &self.device,
-            width,
-            height,
-            self.config.format,
-        );
+        let (texture, view) =
+            Self::create_output_texture(&self.device, width, height, self.config.format);
         self.output_texture = texture;
         self.output_view = view;
         self.register_output_texture(egui_renderer);
+
+        // Resize intermediate textures to match
+        self.recreate_intermediate_textures();
+    }
+
+    /// Recreate intermediate textures at the current output size.
+    /// Called when output is resized or after recompile.
+    fn recreate_intermediate_textures(&mut self) {
+        let count = self.intermediate_textures.len();
+        if count == 0 {
+            return;
+        }
+
+        self.intermediate_textures.clear();
+        for i in 0..count {
+            let (tex, view) = Self::create_intermediate_texture(
+                &self.device,
+                self.output_size.0,
+                self.output_size.1,
+                self.config.format,
+                i,
+            );
+            self.intermediate_textures.push((tex, view));
+        }
+
+        // Rebuild input bind groups for segments that reference intermediate textures
+        for i in 0..self.segment_pipelines.len() {
+            if i > 0 && i - 1 < self.intermediate_textures.len() {
+                // Check if this segment needs input texture by looking at bind group layout
+                // We reconstruct the bind group with the new texture view
+                let prev_view = &self.intermediate_textures[i - 1].1;
+                // Only rebuild if this segment had a texture input
+                // We can check by trying to create with texture layout
+                let new_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some(&format!("Segment {} Input BG (resized)", i)),
+                    layout: &self.texture_input_bg_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(prev_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                    ],
+                });
+                self.segment_pipelines[i].input_bind_group = new_bg;
+            }
+        }
     }
 
     /// Resize the surface when the window resizes
@@ -537,18 +863,21 @@ impl Renderer {
 
         // Get surface output
         let output = self.surface.get_current_texture()?;
-        let surface_view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let surface_view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Frame Encoder"),
-            },
-        );
+            });
 
-        // Pass 1: Render synth to output texture
-        {
+        // Pass 1: Render synth to output texture (multi-pass segments)
+        if self.segment_pipelines.is_empty() {
+            // Fallback
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Synth Pass"),
+                label: Some("Fallback Synth Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.output_view,
                     resolve_target: None,
@@ -561,14 +890,44 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(&self.fallback_pipeline);
             pass.set_bind_group(0, &self.timing_bind_group, &[]);
-            if self.current_param_layout.is_some() {
-                pass.set_bind_group(1, &self.empty_bind_group, &[]);
-                pass.set_bind_group(2, &self.params_bind_group, &[]);
-            }
+            pass.set_bind_group(1, &self.empty_bind_group, &[]);
+            pass.set_bind_group(2, &self.fallback_params_bind_group, &[]);
             pass.draw(0..3, 0..1);
+        } else {
+            let num_segments = self.segment_pipelines.len();
+            for i in 0..num_segments {
+                let target_view = if i < num_segments - 1 {
+                    &self.intermediate_textures[i].1
+                } else {
+                    &self.output_view
+                };
+
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some(&format!("Segment {} Pass", i)),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: target_view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+
+                    let segment = &self.segment_pipelines[i];
+                    pass.set_pipeline(&segment.pipeline);
+                    pass.set_bind_group(0, &self.timing_bind_group, &[]);
+                    pass.set_bind_group(1, &segment.input_bind_group, &[]);
+                    pass.set_bind_group(2, &segment.params_bind_group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+            }
         }
 
         // Pass 2: Clear surface (egui will paint on it)
@@ -592,7 +951,7 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            // Pass drops immediately — just clearing
+            // Pass drops immediately -- just clearing
         }
 
         // Handle egui texture updates
@@ -624,7 +983,7 @@ impl Renderer {
                     view: &surface_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load, // Don't clear — draw over background
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],

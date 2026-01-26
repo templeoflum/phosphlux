@@ -1,7 +1,7 @@
 //! Shader Composer
 //!
 //! Composes device shaders at compile time instead of runtime dispatch.
-//! This is the core architectural change from v1 → v2.
+//! This is the core architectural change from v1 -> v2.
 //!
 //! v1 approach: Single monolithic shader with if-else dispatch
 //!   - Every pixel evaluates every condition
@@ -12,14 +12,39 @@
 //!   - Only include code for devices in use
 //!   - No runtime branching
 //!   - Each device can have optimized code
+//!
+//! v2.1 approach: Multi-pass render segments
+//!   - PixelProcessors compose into single-pass segments
+//!   - ScanModulators break the chain, requiring intermediate textures
+//!   - Each segment gets its own WGSL shader and pipeline
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Common shader code included in all composed shaders
 pub const COMMON_WGSL: &str = include_str!("../shaders/common.wgsl");
 
 /// Component library code
 pub const COMPONENTS_WGSL: &str = include_str!("../shaders/components.wgsl");
+
+// ─── Processing Mode ─────────────────────────────────────────
+
+/// How a device processes its input signal.
+///
+/// This determines whether a device can be composed into a single-pass
+/// shader with other pixel processors, or requires its own render pass
+/// with texture sampling capability.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ProcessingMode {
+    /// Transforms pixel values: vec4 in -> vec4 out.
+    /// Can be composed with other PixelProcessors in a single pass.
+    PixelProcessor,
+
+    /// Needs to sample input at arbitrary UV coordinates (e.g., displacement).
+    /// Requires its own render pass with the upstream output as a texture.
+    ScanModulator,
+}
+
+// ─── ShaderDevice Trait ──────────────────────────────────────
 
 /// A device that can be composed into a shader
 pub trait ShaderDevice {
@@ -29,8 +54,14 @@ pub trait ShaderDevice {
     /// Human-readable name
     fn device_name(&self) -> &str;
 
-    /// WGSL code for this device's processing
-    /// Should define a function: fn device_{id}_process(...) -> vec4<f32>
+    /// WGSL code for this device's processing.
+    ///
+    /// For PixelProcessor devices:
+    ///   Must define: fn device_{id}_process(uv, time, video_in, params...) -> vec4<f32>
+    ///
+    /// For ScanModulator devices:
+    ///   Must define: fn device_{id}_process(uv, time, params...) -> vec4<f32>
+    ///   Can access seg_input_tex / seg_input_sampler globals for texture sampling.
     fn shader_code(&self) -> &str;
 
     /// Parameters this device exposes
@@ -41,6 +72,12 @@ pub trait ShaderDevice {
 
     /// Output ports
     fn outputs(&self) -> Vec<Port>;
+
+    /// How this device processes signals.
+    /// PixelProcessors can be composed; ScanModulators need their own render pass.
+    fn processing_mode(&self) -> ProcessingMode {
+        ProcessingMode::PixelProcessor
+    }
 
     /// Does this device need a feedback texture?
     fn needs_feedback(&self) -> bool {
@@ -57,6 +94,8 @@ pub trait ShaderDevice {
         None
     }
 }
+
+// ─── Device Parameter ────────────────────────────────────────
 
 /// A device parameter
 #[derive(Clone, Debug)]
@@ -93,6 +132,8 @@ impl DeviceParameter {
     }
 }
 
+// ─── Port / Signal Type ──────────────────────────────────────
+
 /// A device port (input or output)
 #[derive(Clone, Debug)]
 pub struct Port {
@@ -113,6 +154,8 @@ pub enum SignalType {
     Cv,
 }
 
+// ─── Connection ──────────────────────────────────────────────
+
 /// A connection between device ports
 #[derive(Clone, Debug)]
 pub struct Connection {
@@ -125,6 +168,8 @@ pub struct Connection {
     /// Destination port name
     pub to_port: String,
 }
+
+// ─── Device Instance / Patch ─────────────────────────────────
 
 /// A device instance in a patch
 pub struct DeviceInstance {
@@ -183,13 +228,15 @@ impl DevicePatch {
     /// Remove a device by instance_id
     pub fn remove_device(&mut self, instance_id: u32) {
         self.devices.retain(|d| d.instance_id != instance_id);
-        self.connections.retain(|c| c.from_device != instance_id && c.to_device != instance_id);
+        self.connections
+            .retain(|c| c.from_device != instance_id && c.to_device != instance_id);
     }
 
     /// Connect two devices by instance_id and port name
     pub fn connect(&mut self, from_id: u32, from_port: &str, to_id: u32, to_port: &str) {
         // Remove any existing connection to this input
-        self.connections.retain(|c| !(c.to_device == to_id && c.to_port == to_port));
+        self.connections
+            .retain(|c| !(c.to_device == to_id && c.to_port == to_port));
         self.connections.push(Connection {
             from_device: from_id,
             from_port: from_port.to_string(),
@@ -200,7 +247,8 @@ impl DevicePatch {
 
     /// Disconnect a device input
     pub fn disconnect(&mut self, to_id: u32, to_port: &str) {
-        self.connections.retain(|c| !(c.to_device == to_id && c.to_port == to_port));
+        self.connections
+            .retain(|c| !(c.to_device == to_id && c.to_port == to_port));
     }
 
     /// Get device by instance_id
@@ -210,7 +258,9 @@ impl DevicePatch {
 
     /// Get mutable device by instance_id
     pub fn get_device_mut(&mut self, instance_id: u32) -> Option<&mut DeviceInstance> {
-        self.devices.iter_mut().find(|d| d.instance_id == instance_id)
+        self.devices
+            .iter_mut()
+            .find(|d| d.instance_id == instance_id)
     }
 
     /// Collect all parameter values into a flat f32 buffer matching the param layout
@@ -227,13 +277,21 @@ impl DevicePatch {
                     device.device.device_id(),
                     device.instance_id
                 );
-                let short_name = param_info.name.strip_prefix(&prefix).unwrap_or(&param_info.name);
+                let short_name = param_info
+                    .name
+                    .strip_prefix(&prefix)
+                    .unwrap_or(&param_info.name);
 
                 if let Some(&val) = device.params.get(short_name) {
                     values[offset_idx] = val;
                 } else {
                     // Use default from device parameter definition
-                    if let Some(dp) = device.device.parameters().iter().find(|p| p.name == short_name) {
+                    if let Some(dp) = device
+                        .device
+                        .parameters()
+                        .iter()
+                        .find(|p| p.name == short_name)
+                    {
                         values[offset_idx] = dp.default;
                     }
                 }
@@ -244,7 +302,41 @@ impl DevicePatch {
     }
 }
 
-/// Composed shader ready for GPU
+// ─── Render Plan (Multi-Pass) ────────────────────────────────
+
+/// A complete render plan: ordered list of segments to execute.
+/// Each segment is a render pass with its own shader and pipeline.
+pub struct RenderPlan {
+    /// Ordered segments to execute
+    pub segments: Vec<SegmentShader>,
+}
+
+/// A single render segment with its compiled shader
+pub struct SegmentShader {
+    /// What kind of segment this is
+    pub kind: SegmentKind,
+    /// Complete WGSL source for this segment
+    pub wgsl_source: String,
+    /// Parameter uniform layout for this segment's devices
+    pub param_layout: ParamLayout,
+    /// Whether this segment reads from a previous segment's output texture
+    pub needs_input_texture: bool,
+    /// Instance IDs of devices in this segment (for param collection)
+    pub device_instance_ids: Vec<u32>,
+}
+
+/// The kind of render segment
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SegmentKind {
+    /// Multiple pixel processors composed into one pass
+    Composed,
+    /// A single scan modulator device with texture sampling
+    ScanModulator,
+}
+
+// ─── Composed Shader (legacy single-pass) ────────────────────
+
+/// Composed shader ready for GPU (single-pass, backward compat)
 pub struct ComposedShader {
     /// Complete WGSL source
     pub wgsl_source: String,
@@ -293,6 +385,8 @@ pub struct StateBinding {
     pub size: usize,
 }
 
+// ─── Shader Composer ─────────────────────────────────────────
+
 /// Composes shaders from device patches
 pub struct ShaderComposer {
     /// Cached compiled shaders (by patch hash)
@@ -306,7 +400,7 @@ impl ShaderComposer {
         }
     }
 
-    /// Compose a shader for a device patch
+    /// Compose a shader for a device patch (legacy single-pass API)
     pub fn compose(&mut self, patch: &DevicePatch) -> Result<&ComposedShader, ComposeError> {
         // For now, always recompile (caching can be added later)
         let shader = self.compose_internal(patch)?;
@@ -314,6 +408,405 @@ impl ShaderComposer {
         self.cache.insert(hash, shader);
         Ok(self.cache.get(&hash).unwrap())
     }
+
+    /// Compose a multi-pass render plan for a device patch.
+    ///
+    /// This is the primary composition API for v2.1+.
+    /// Returns a RenderPlan with one or more segments:
+    /// - If the patch has no ScanModulators, returns a single Composed segment
+    ///   (equivalent to the old single-pass behavior).
+    /// - If the patch has ScanModulators, breaks the chain into multiple segments
+    ///   with intermediate textures between them.
+    pub fn compose_plan(&self, patch: &DevicePatch) -> Result<RenderPlan, ComposeError> {
+        if patch.devices.is_empty() {
+            return Err(ComposeError::MissingDevice(0));
+        }
+
+        let sorted = self.topological_sort(patch)?;
+
+        // Check if we need multi-pass
+        let has_scan_modulators = sorted.iter().any(|&idx| {
+            patch.devices[idx].device.processing_mode() == ProcessingMode::ScanModulator
+        });
+
+        if !has_scan_modulators {
+            // Single segment — use existing compose logic
+            let shader = self.compose_internal(patch)?;
+            let segment = SegmentShader {
+                kind: SegmentKind::Composed,
+                wgsl_source: shader.wgsl_source,
+                param_layout: shader.param_layout,
+                needs_input_texture: false,
+                device_instance_ids: patch.devices.iter().map(|d| d.instance_id).collect(),
+            };
+            return Ok(RenderPlan {
+                segments: vec![segment],
+            });
+        }
+
+        // Multi-pass segmentation
+        let mut segments = Vec::new();
+        let mut current_group: Vec<usize> = Vec::new();
+        let mut all_prev_device_ids: HashSet<u32> = HashSet::new();
+        let mut segment_count = 0usize;
+
+        for &device_idx in &sorted {
+            let device = &patch.devices[device_idx];
+            let mode = device.device.processing_mode();
+
+            match mode {
+                ProcessingMode::PixelProcessor => {
+                    current_group.push(device_idx);
+                }
+                ProcessingMode::ScanModulator => {
+                    // Finalize current pixel processor group (if non-empty)
+                    if !current_group.is_empty() {
+                        let segment = self.build_composed_segment(
+                            patch,
+                            &current_group,
+                            segment_count > 0, // needs input texture if not first segment
+                            &all_prev_device_ids,
+                        )?;
+                        for &idx in &current_group {
+                            all_prev_device_ids.insert(patch.devices[idx].instance_id);
+                        }
+                        segments.push(segment);
+                        current_group.clear();
+                        segment_count += 1;
+                    }
+
+                    // Create scan modulator segment
+                    let segment = self.build_scan_modulator_segment(patch, device_idx)?;
+                    all_prev_device_ids.insert(device.instance_id);
+                    segments.push(segment);
+                    segment_count += 1;
+                }
+            }
+        }
+
+        // Finalize remaining pixel processors
+        if !current_group.is_empty() {
+            let segment = self.build_composed_segment(
+                patch,
+                &current_group,
+                segment_count > 0,
+                &all_prev_device_ids,
+            )?;
+            segments.push(segment);
+        }
+
+        log::info!(
+            "Render plan: {} segments ({} scan modulators)",
+            segments.len(),
+            segments
+                .iter()
+                .filter(|s| s.kind == SegmentKind::ScanModulator)
+                .count()
+        );
+
+        Ok(RenderPlan { segments })
+    }
+
+    // ─── Segment Builders ────────────────────────────────────
+
+    /// Build a composed segment from a group of pixel processor devices.
+    fn build_composed_segment(
+        &self,
+        patch: &DevicePatch,
+        device_indices: &[usize],
+        needs_input_texture: bool,
+        prev_device_ids: &HashSet<u32>,
+    ) -> Result<SegmentShader, ComposeError> {
+        let mut wgsl = String::new();
+
+        // 1. Common + components
+        wgsl.push_str("// === COMMON ===\n");
+        wgsl.push_str(COMMON_WGSL);
+        wgsl.push_str("\n\n");
+        wgsl.push_str("// === COMPONENTS ===\n");
+        wgsl.push_str(COMPONENTS_WGSL);
+        wgsl.push_str("\n\n");
+
+        // 2. Input texture binding (if reading from previous segment)
+        if needs_input_texture {
+            wgsl.push_str("// === SEGMENT INPUT ===\n");
+            wgsl.push_str(
+                "@group(1) @binding(0) var seg_input_tex: texture_2d<f32>;\n",
+            );
+            wgsl.push_str(
+                "@group(1) @binding(1) var seg_input_sampler: sampler;\n\n",
+            );
+        }
+
+        // 3. Parameter struct (only this segment's devices)
+        let devices_in_segment: Vec<&DeviceInstance> = device_indices
+            .iter()
+            .map(|&idx| &patch.devices[idx])
+            .collect();
+        let (param_struct, param_layout) = self.build_segment_param_struct(&devices_in_segment);
+        wgsl.push_str("// === PARAMETERS ===\n");
+        wgsl.push_str(&param_struct);
+        wgsl.push_str("\n\n");
+
+        // 4. Device shader code (deduplicated)
+        wgsl.push_str("// === DEVICES ===\n");
+        let mut included_ids = HashSet::new();
+        for device in &devices_in_segment {
+            let device_id = device.device.device_id();
+            if included_ids.insert(device_id) {
+                wgsl.push_str(&format!("// --- {} ---\n", device.device.device_name()));
+                wgsl.push_str(device.device.shader_code());
+                wgsl.push_str("\n\n");
+            }
+        }
+
+        // 5. Main function
+        let main_fn = self.generate_segment_main(
+            patch,
+            device_indices,
+            needs_input_texture,
+            prev_device_ids,
+        )?;
+        wgsl.push_str("// === MAIN ===\n");
+        wgsl.push_str(&main_fn);
+
+        let device_instance_ids = devices_in_segment
+            .iter()
+            .map(|d| d.instance_id)
+            .collect();
+
+        Ok(SegmentShader {
+            kind: SegmentKind::Composed,
+            wgsl_source: wgsl,
+            param_layout,
+            needs_input_texture,
+            device_instance_ids,
+        })
+    }
+
+    /// Build a scan modulator segment (single device, reads from input texture).
+    fn build_scan_modulator_segment(
+        &self,
+        patch: &DevicePatch,
+        device_idx: usize,
+    ) -> Result<SegmentShader, ComposeError> {
+        let device = &patch.devices[device_idx];
+        let mut wgsl = String::new();
+
+        // 1. Common + components
+        wgsl.push_str("// === COMMON ===\n");
+        wgsl.push_str(COMMON_WGSL);
+        wgsl.push_str("\n\n");
+        wgsl.push_str("// === COMPONENTS ===\n");
+        wgsl.push_str(COMPONENTS_WGSL);
+        wgsl.push_str("\n\n");
+
+        // 2. Input texture (scan modulators always read from a texture)
+        wgsl.push_str("// === SEGMENT INPUT ===\n");
+        wgsl.push_str("@group(1) @binding(0) var seg_input_tex: texture_2d<f32>;\n");
+        wgsl.push_str("@group(1) @binding(1) var seg_input_sampler: sampler;\n\n");
+
+        // 3. Parameters
+        let devices = vec![device];
+        let (param_struct, param_layout) = self.build_segment_param_struct(&devices);
+        wgsl.push_str("// === PARAMETERS ===\n");
+        wgsl.push_str(&param_struct);
+        wgsl.push_str("\n\n");
+
+        // 4. Device code
+        wgsl.push_str("// === DEVICE ===\n");
+        wgsl.push_str(&format!("// --- {} ---\n", device.device.device_name()));
+        wgsl.push_str(device.device.shader_code());
+        wgsl.push_str("\n\n");
+
+        // 5. Main function — scan modulator functions don't take video_in,
+        //    they sample from seg_input_tex directly
+        wgsl.push_str("// === MAIN ===\n");
+        wgsl.push_str("@fragment\n");
+        wgsl.push_str("fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n");
+        wgsl.push_str("    let uv = in.uv;\n");
+        wgsl.push_str("    let time = timing.time;\n\n");
+
+        // Build param args (no video_in for scan modulators)
+        let mut param_args = Vec::new();
+        for param in device.device.parameters() {
+            let param_name = format!(
+                "{}_{}_{}",
+                device.device.device_id(),
+                device.instance_id,
+                param.name
+            );
+            param_args.push(format!("params.{}", param_name));
+        }
+
+        let fn_name = format!("device_{}_process", device.device.device_id());
+        wgsl.push_str(&format!(
+            "    return {}(uv, time{}{});\n",
+            fn_name,
+            if param_args.is_empty() { "" } else { ", " },
+            param_args.join(", ")
+        ));
+        wgsl.push_str("}\n");
+
+        Ok(SegmentShader {
+            kind: SegmentKind::ScanModulator,
+            wgsl_source: wgsl,
+            param_layout,
+            needs_input_texture: true,
+            device_instance_ids: vec![device.instance_id],
+        })
+    }
+
+    /// Generate the main function for a composed (pixel processor) segment.
+    fn generate_segment_main(
+        &self,
+        patch: &DevicePatch,
+        device_indices: &[usize],
+        needs_input_texture: bool,
+        prev_device_ids: &HashSet<u32>,
+    ) -> Result<String, ComposeError> {
+        let mut wgsl = String::new();
+
+        wgsl.push_str("@fragment\n");
+        wgsl.push_str("fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n");
+        wgsl.push_str("    let uv = in.uv;\n");
+        wgsl.push_str("    let time = timing.time;\n\n");
+
+        // Declare signal variables for this segment's devices
+        for &idx in device_indices {
+            let device = &patch.devices[idx];
+            wgsl.push_str(&format!(
+                "    var signal_{}: vec4<f32> = vec4<f32>(0.0);\n",
+                device.instance_id
+            ));
+        }
+        wgsl.push_str("\n");
+
+        // Generate device calls in topological order
+        for &idx in device_indices {
+            let device = &patch.devices[idx];
+
+            // Get input signals
+            let mut input_args = Vec::new();
+            for input in device.device.inputs() {
+                let mut found = false;
+                for conn in &patch.connections {
+                    if conn.to_device == device.instance_id && conn.to_port == input.name {
+                        if prev_device_ids.contains(&conn.from_device) {
+                            // Cross-segment input: sample from previous segment's texture
+                            if needs_input_texture {
+                                input_args.push(
+                                    "textureSample(seg_input_tex, seg_input_sampler, uv)"
+                                        .to_string(),
+                                );
+                            } else {
+                                // Previous segment has no texture — default to black
+                                input_args.push("vec4<f32>(0.0)".to_string());
+                            }
+                        } else {
+                            // Same-segment input
+                            input_args.push(format!("signal_{}", conn.from_device));
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    input_args.push("vec4<f32>(0.0)".to_string());
+                }
+            }
+
+            // Parameter args
+            let mut param_args = Vec::new();
+            for param in device.device.parameters() {
+                let param_name = format!(
+                    "{}_{}_{}",
+                    device.device.device_id(),
+                    device.instance_id,
+                    param.name
+                );
+                param_args.push(format!("params.{}", param_name));
+            }
+
+            let mut all_args = Vec::new();
+            all_args.extend(input_args);
+            all_args.extend(param_args);
+
+            let fn_name = format!("device_{}_process", device.device.device_id());
+
+            wgsl.push_str(&format!(
+                "    signal_{} = {}(uv, time{}{});\n",
+                device.instance_id,
+                fn_name,
+                if all_args.is_empty() { "" } else { ", " },
+                all_args.join(", ")
+            ));
+        }
+
+        // Return the output device's signal (or last device in segment)
+        let output_id = device_indices
+            .iter()
+            .rev()
+            .find(|&&idx| patch.devices[idx].instance_id == patch.output_device)
+            .map(|&idx| patch.devices[idx].instance_id)
+            .unwrap_or_else(|| {
+                patch.devices[*device_indices.last().unwrap()].instance_id
+            });
+
+        wgsl.push_str(&format!("\n    return signal_{};\n", output_id));
+        wgsl.push_str("}\n");
+
+        Ok(wgsl)
+    }
+
+    /// Build a DeviceParams struct for a subset of devices.
+    fn build_segment_param_struct(&self, devices: &[&DeviceInstance]) -> (String, ParamLayout) {
+        let mut layout = ParamLayout::default();
+        let mut wgsl = String::from("struct DeviceParams {\n");
+        let mut offset = 0usize;
+
+        for device in devices {
+            layout.device_offsets.insert(device.instance_id, offset);
+
+            for param in device.device.parameters() {
+                let param_name = format!(
+                    "{}_{}_{}",
+                    device.device.device_id(),
+                    device.instance_id,
+                    param.name
+                );
+                wgsl.push_str(&format!("    {}: f32,\n", param_name));
+
+                layout.params.push(ParamInfo {
+                    name: param_name,
+                    device_id: device.instance_id,
+                    offset,
+                });
+
+                offset += 4;
+            }
+        }
+
+        // WGSL requires at least one field in a struct
+        if offset == 0 {
+            wgsl.push_str("    _pad0: f32,\n");
+            offset = 4;
+        }
+
+        // Ensure 16-byte alignment
+        while offset % 16 != 0 {
+            wgsl.push_str(&format!("    _pad{}: f32,\n", offset / 4));
+            offset += 4;
+        }
+
+        layout.size = offset;
+        wgsl.push_str("}\n\n");
+        wgsl.push_str("@group(2) @binding(0)\nvar<uniform> params: DeviceParams;\n");
+
+        (wgsl, layout)
+    }
+
+    // ─── Legacy Single-Pass Composition ──────────────────────
 
     fn compose_internal(&self, patch: &DevicePatch) -> Result<ComposedShader, ComposeError> {
         let mut wgsl = String::new();
@@ -348,10 +841,9 @@ impl ShaderComposer {
             wgsl.push_str("\n\n");
         }
 
-        // 6. Add device shader code (deduplicated by device_id —
-        //    multiple instances of the same device type share one function)
+        // 6. Add device shader code (deduplicated by device_id)
         wgsl.push_str("// === DEVICES ===\n");
-        let mut included_device_ids = std::collections::HashSet::new();
+        let mut included_device_ids = HashSet::new();
         for device_inst in &patch.devices {
             let device_id = device_inst.device.device_id();
             if included_device_ids.insert(device_id) {
@@ -383,7 +875,9 @@ impl ShaderComposer {
         let mut offset = 0usize;
 
         for device_inst in &patch.devices {
-            layout.device_offsets.insert(device_inst.instance_id, offset);
+            layout
+                .device_offsets
+                .insert(device_inst.instance_id, offset);
 
             for param in device_inst.device.parameters() {
                 let param_name = format!(
@@ -417,7 +911,10 @@ impl ShaderComposer {
         (wgsl, layout)
     }
 
-    fn build_texture_bindings(&self, patch: &DevicePatch) -> (String, Vec<TextureBinding>) {
+    fn build_texture_bindings(
+        &self,
+        patch: &DevicePatch,
+    ) -> (String, Vec<TextureBinding>) {
         let mut wgsl = String::new();
         let mut bindings = Vec::new();
         let mut binding_index = 0u32;
@@ -451,7 +948,10 @@ impl ShaderComposer {
         (wgsl, bindings)
     }
 
-    fn build_state_bindings(&self, patch: &DevicePatch) -> (String, Vec<StateBinding>) {
+    fn build_state_bindings(
+        &self,
+        patch: &DevicePatch,
+    ) -> (String, Vec<StateBinding>) {
         let mut wgsl = String::new();
         let mut bindings = Vec::new();
 
@@ -463,11 +963,8 @@ impl ShaderComposer {
 
                     bindings.push(StateBinding {
                         device_id: device_inst.instance_id,
-                        struct_name: format!(
-                            "State_{}",
-                            device_inst.device.device_id()
-                        ),
-                        size: 0, // Calculated later
+                        struct_name: format!("State_{}", device_inst.device.device_id()),
+                        size: 0,
                     });
                 }
             }
@@ -535,10 +1032,7 @@ impl ShaderComposer {
             all_extra_args.extend(param_args);
 
             // Call device function
-            let fn_name = format!(
-                "device_{}_process",
-                device.device.device_id()
-            );
+            let fn_name = format!("device_{}_process", device.device.device_id());
 
             wgsl.push_str(&format!(
                 "    signal_{} = {}(uv, time{}{});\n",
@@ -562,9 +1056,14 @@ impl ShaderComposer {
         Ok(wgsl)
     }
 
+    // ─── Utilities ───────────────────────────────────────────
+
     /// Resolve instance_id to device index
     fn instance_to_index(patch: &DevicePatch, instance_id: u32) -> Option<usize> {
-        patch.devices.iter().position(|d| d.instance_id == instance_id)
+        patch
+            .devices
+            .iter()
+            .position(|d| d.instance_id == instance_id)
     }
 
     fn topological_sort(&self, patch: &DevicePatch) -> Result<Vec<usize>, ComposeError> {
@@ -607,7 +1106,6 @@ impl ShaderComposer {
     }
 
     fn patch_hash(&self, patch: &DevicePatch) -> u64 {
-        // Simple hash for now
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
@@ -624,6 +1122,8 @@ impl Default for ShaderComposer {
     }
 }
 
+// ─── Errors ──────────────────────────────────────────────────
+
 /// Errors during shader composition
 #[derive(Debug)]
 pub enum ComposeError {
@@ -635,7 +1135,9 @@ pub enum ComposeError {
 impl std::fmt::Display for ComposeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ComposeError::CyclicGraph => write!(f, "Patch contains a cycle (use Frame Buffer for feedback)"),
+            ComposeError::CyclicGraph => {
+                write!(f, "Patch contains a cycle (use Frame Buffer for feedback)")
+            }
             ComposeError::MissingDevice(id) => write!(f, "Device {} not found", id),
             ComposeError::InvalidConnection(msg) => write!(f, "Invalid connection: {}", msg),
         }
@@ -643,6 +1145,8 @@ impl std::fmt::Display for ComposeError {
 }
 
 impl std::error::Error for ComposeError {}
+
+// ─── Tests ───────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -652,8 +1156,12 @@ mod tests {
     struct TestRamp;
 
     impl ShaderDevice for TestRamp {
-        fn device_id(&self) -> &'static str { "test_ramp" }
-        fn device_name(&self) -> &str { "Test Ramp" }
+        fn device_id(&self) -> &'static str {
+            "test_ramp"
+        }
+        fn device_name(&self) -> &str {
+            "Test Ramp"
+        }
         fn shader_code(&self) -> &str {
             r#"
 fn device_test_ramp_process(uv: vec2<f32>, time: f32) -> vec4<f32> {
@@ -661,24 +1169,29 @@ fn device_test_ramp_process(uv: vec2<f32>, time: f32) -> vec4<f32> {
 }
 "#
         }
-        fn parameters(&self) -> Vec<DeviceParameter> { vec![] }
-        fn inputs(&self) -> Vec<Port> { vec![] }
+        fn parameters(&self) -> Vec<DeviceParameter> {
+            vec![]
+        }
+        fn inputs(&self) -> Vec<Port> {
+            vec![]
+        }
         fn outputs(&self) -> Vec<Port> {
-            vec![Port { name: "out".to_string(), signal_type: SignalType::Rgb }]
+            vec![Port {
+                name: "out".to_string(),
+                signal_type: SignalType::Rgb,
+            }]
         }
     }
 
     #[test]
     fn test_compose_simple() {
         let patch = DevicePatch {
-            devices: vec![
-                DeviceInstance {
-                    device: Box::new(TestRamp),
-                    instance_id: 0,
-                    params: HashMap::new(),
-                    position: (0.0, 0.0),
-                },
-            ],
+            devices: vec![DeviceInstance {
+                device: Box::new(TestRamp),
+                instance_id: 0,
+                params: HashMap::new(),
+                position: (0.0, 0.0),
+            }],
             connections: vec![],
             output_device: 0,
             next_instance_id: 1,
@@ -691,5 +1204,29 @@ fn device_test_ramp_process(uv: vec2<f32>, time: f32) -> vec4<f32> {
         let shader = result.unwrap();
         assert!(shader.wgsl_source.contains("device_test_ramp_process"));
         assert!(shader.wgsl_source.contains("fs_main"));
+    }
+
+    #[test]
+    fn test_compose_plan_single_segment() {
+        let patch = DevicePatch {
+            devices: vec![DeviceInstance {
+                device: Box::new(TestRamp),
+                instance_id: 0,
+                params: HashMap::new(),
+                position: (0.0, 0.0),
+            }],
+            connections: vec![],
+            output_device: 0,
+            next_instance_id: 1,
+        };
+
+        let composer = ShaderComposer::new();
+        let result = composer.compose_plan(&patch);
+        assert!(result.is_ok());
+
+        let plan = result.unwrap();
+        assert_eq!(plan.segments.len(), 1);
+        assert_eq!(plan.segments[0].kind, SegmentKind::Composed);
+        assert!(!plan.segments[0].needs_input_texture);
     }
 }

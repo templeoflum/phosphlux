@@ -11,7 +11,7 @@
 //!
 //! Reference: "Paik/Abe Video Synthesizer" documentation, EAI archives
 
-use crate::gpu::{DeviceParameter, Port, ShaderDevice, SignalType};
+use crate::gpu::{DeviceParameter, Port, ProcessingMode, ShaderDevice, SignalType};
 
 /// The Paik/Abe Colorizer
 ///
@@ -109,27 +109,30 @@ impl ShaderDevice for PaikAbeWobulator {
 
     fn shader_code(&self) -> &str {
         r#"
-// Paik/Abe Wobulator
-// Horizontal displacement based on luminance
+// Paik/Abe Wobulator — Scan Modulator
+// Displaces horizontal UV based on oscillator + input luminance.
+// Reads upstream signal from seg_input_tex at displaced coordinates.
 
 fn device_paik_abe_wobulator_process(
     uv: vec2<f32>,
     time: f32,
-    video_in: vec4<f32>,
     frequency: f32,
     amplitude: f32,
     phase: f32
 ) -> vec4<f32> {
-    // Get displacement amount from input luminance
-    let luma = to_luma(video_in.rgb);
+    // Sample input at current position to get luma for modulation
+    let current = textureSample(seg_input_tex, seg_input_sampler, uv);
+    let luma = to_luma(current.rgb);
 
-    // Calculate horizontal displacement
-    let displacement = sin(uv.y * frequency * 6.283 + time * 2.0 + phase * 6.283) * amplitude * luma;
+    // Oscillator-driven horizontal displacement, modulated by input luminance
+    let osc = sin(uv.y * frequency * 6.283 + time * 2.0 + phase * 6.283);
+    let displacement = osc * amplitude * (0.5 + luma);
 
-    // Apply displacement (modulate color based on displacement)
-    let wobbled = video_in.rgb * (1.0 + displacement * 2.0);
+    // Displace UV horizontally
+    let displaced_uv = vec2<f32>(clamp(uv.x + displacement, 0.0, 1.0), uv.y);
 
-    return vec4<f32>(video_clamp3(wobbled), 1.0);
+    // Sample upstream signal at displaced position
+    return textureSample(seg_input_tex, seg_input_sampler, displaced_uv);
 }
 "#
     }
@@ -137,7 +140,7 @@ fn device_paik_abe_wobulator_process(
     fn parameters(&self) -> Vec<DeviceParameter> {
         vec![
             DeviceParameter::new("frequency", "Wobble Freq", 0.5, 20.0, 4.0),
-            DeviceParameter::new("amplitude", "Amplitude", 0.0, 0.1, 0.02),
+            DeviceParameter::new("amplitude", "Amplitude", 0.0, 0.5, 0.05),
             DeviceParameter::new("phase", "Phase", 0.0, 1.0, 0.0),
         ]
     }
@@ -154,5 +157,9 @@ fn device_paik_abe_wobulator_process(
             name: "video_out".to_string(),
             signal_type: SignalType::Rgb,
         }]
+    }
+
+    fn processing_mode(&self) -> ProcessingMode {
+        ProcessingMode::ScanModulator
     }
 }
