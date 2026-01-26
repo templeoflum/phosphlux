@@ -1121,6 +1121,40 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.9**: Swarm agent system — multi-agent component research, token tracking, model benchmarking
 - **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator
 - **v0.11**: v2 node editor — compose-based architecture, shader composition, device registry
+- **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator spatial displacement
+
+---
+
+### Accidental Effect Log: "Luma Push" Wobulator (v0.12-pre)
+
+During initial multi-pass wobulator implementation, the displacement formula used
+`osc * amplitude * (0.5 + luma)` instead of the reference's centered formula
+`luma - 0.5`. This created a **unidirectional luma-weighted displacement** where:
+
+- All pixels shift in the same direction per oscillator half-cycle
+- Bright areas displace MORE (up to 1.5x amplitude)
+- Dark areas displace LESS (minimum 0.5x amplitude) but never reverse
+- The result is an organic "brightness bulge" effect — bright regions appear to push
+  outward like hot spots on a warped surface
+
+This differs from the correct Paik/Abe behavior where mid-gray is neutral and bright
+vs dark areas push in *opposite* directions. The accidental effect is visually
+interesting and should be offered as an optional mode (e.g., "Luma Push" vs
+"Luma Bipolar" displacement mode) in a future version.
+
+**Shader formula (accidental):**
+```wgsl
+let displacement = osc * amplitude * (0.5 + luma);  // always positive bias
+```
+
+**Shader formula (correct Paik/Abe):**
+```wgsl
+let luma_centered = luma - 0.5;  // centered: bright=positive, dark=negative
+let displacement = osc * h_amp + luma_centered * video_mod;  // independent terms
+```
+
+Additional issues in the pre-fix version: horizontal-only displacement (no vertical
+oscillator), no edge mode handling (clamp/wrap/mirror).
 
 ---
 

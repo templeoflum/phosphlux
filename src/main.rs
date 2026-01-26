@@ -262,7 +262,9 @@ impl App {
                 window.scale_factor() as f32,
             ) {
                 Ok(_) => {}
-                Err(wgpu::SurfaceError::Lost) => renderer.resize(renderer.size),
+                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                    renderer.resize(renderer.size);
+                }
                 Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                 Err(e) => log::error!("Render error: {:?}", e),
             }
@@ -338,8 +340,8 @@ fn render_node_editor_layout(
     // Right panel - Preview + Inspector
     egui::SidePanel::right("right_panel")
         .resizable(true)
-        .default_width(280.0)
-        .width_range(200.0..=400.0)
+        .default_width(400.0)
+        .width_range(200.0..=1200.0)
         .show(ctx, |ui| {
             // Preview header with aspect ratio selector
             ui.horizontal(|ui| {
@@ -367,9 +369,11 @@ fn render_node_editor_layout(
                 });
             });
 
-            // Preview display
+            // Preview display — uses available height, reserving space for inspector
             let panel_width = ui.available_width();
-            let max_preview_height = 300.0_f32;
+            let available_height = ui.available_height();
+            // Reserve at least 180px for the inspector below, use the rest for preview
+            let max_preview_height = (available_height - 180.0).max(120.0);
             let content_area = egui::Vec2::new(panel_width.max(64.0), max_preview_height);
             let preview_size = node_editor.aspect_ratio.fit_size(content_area);
             let preview_w = preview_size.x.max(64.0) as u32;

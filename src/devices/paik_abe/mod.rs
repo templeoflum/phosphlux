@@ -110,26 +110,45 @@ impl ShaderDevice for PaikAbeWobulator {
     fn shader_code(&self) -> &str {
         r#"
 // Paik/Abe Wobulator — Scan Modulator
-// Displaces horizontal UV based on oscillator + input luminance.
-// Reads upstream signal from seg_input_tex at displaced coordinates.
+// CRT raster displacement via oscillators + video-driven modulation.
+// Reference: research/components/functional/wobbulator/v1/
 
 fn device_paik_abe_wobulator_process(
     uv: vec2<f32>,
     time: f32,
-    frequency: f32,
-    amplitude: f32,
+    h_freq: f32,
+    h_amp: f32,
+    v_freq: f32,
+    v_amp: f32,
+    video_mod: f32,
+    speed: f32,
     phase: f32
 ) -> vec4<f32> {
-    // Sample input at current position to get luma for modulation
+    // Sample input at current position for video-driven displacement
     let current = textureSample(seg_input_tex, seg_input_sampler, uv);
     let luma = to_luma(current.rgb);
 
-    // Oscillator-driven horizontal displacement, modulated by input luminance
-    let osc = sin(uv.y * frequency * 6.283 + time * 2.0 + phase * 6.283);
-    let displacement = osc * amplitude * (0.5 + luma);
+    // Center luma around 0.5: mid-gray = no displacement,
+    // bright = positive, dark = negative (authentic Paik/Abe behavior)
+    let luma_centered = luma - 0.5;
 
-    // Displace UV horizontally
-    let displaced_uv = vec2<f32>(clamp(uv.x + displacement, 0.0, 1.0), uv.y);
+    // Horizontal oscillator: displaces X based on Y position
+    let h_phase = uv.y * h_freq + time * speed + phase;
+    let h_disp = sin(h_phase * 6.283) * h_amp;
+
+    // Vertical oscillator: displaces Y based on X position
+    let v_phase = uv.x * v_freq + time * speed * 0.7 + phase * 1.3;
+    let v_disp = sin(v_phase * 6.283) * v_amp;
+
+    // Video-driven radial displacement
+    let video_disp = luma_centered * video_mod;
+
+    // Combine oscillator + video displacement
+    let displaced_uv = clamp(
+        uv + vec2<f32>(h_disp + video_disp, v_disp + video_disp * 0.5),
+        vec2<f32>(0.0),
+        vec2<f32>(1.0)
+    );
 
     // Sample upstream signal at displaced position
     return textureSample(seg_input_tex, seg_input_sampler, displaced_uv);
@@ -139,8 +158,12 @@ fn device_paik_abe_wobulator_process(
 
     fn parameters(&self) -> Vec<DeviceParameter> {
         vec![
-            DeviceParameter::new("frequency", "Wobble Freq", 0.5, 20.0, 4.0),
-            DeviceParameter::new("amplitude", "Amplitude", 0.0, 0.5, 0.05),
+            DeviceParameter::new("h_freq", "H Frequency", 0.5, 20.0, 3.0),
+            DeviceParameter::new("h_amp", "H Amplitude", 0.0, 0.2, 0.05),
+            DeviceParameter::new("v_freq", "V Frequency", 0.5, 20.0, 2.0),
+            DeviceParameter::new("v_amp", "V Amplitude", 0.0, 0.2, 0.04),
+            DeviceParameter::new("video_mod", "Video Mod", 0.0, 0.5, 0.0),
+            DeviceParameter::new("speed", "Speed", 0.0, 5.0, 0.5),
             DeviceParameter::new("phase", "Phase", 0.0, 1.0, 0.0),
         ]
     }
