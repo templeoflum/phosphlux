@@ -1,0 +1,7 @@
+{
+  "name": "ped_colorizer_default",
+  "device": "paik-abe",
+  "description": "CA3019 PED Colorizer with vertical ramp input, thresholds at 0.25/0.5/0.75, palette 0 (blue-magenta-yellow-cyan), softness 0.3",
+  "timestamp": "2026-01-26T03:45:47.112400",
+  "image_file": "ped_colorizer_default_20260126_034547.png"
+}

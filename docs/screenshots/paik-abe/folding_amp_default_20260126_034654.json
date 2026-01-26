@@ -1,0 +1,7 @@
+{
+  "name": "folding_amp_default",
+  "device": "paik-abe",
+  "description": "Folding Amplifier with horizontal ramp input, gain=1.5, offset=0.5, softness=0.3, RGB mode. Shows characteristic wavefolder distortion with color fringing at fold boundaries.",
+  "timestamp": "2026-01-26T03:46:54.677242",
+  "image_file": "folding_amp_default_20260126_034654.png"
+}

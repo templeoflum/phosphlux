@@ -1,0 +1,7 @@
+{
+  "name": "wobbulator_default",
+  "device": "paik-abe",
+  "description": "Wobbulator with checker input, h_freq=3, h_amp=0.06, v_freq=2, v_amp=0.05, wrap edge mode. Shows sinusoidal CRT raster displacement creating diamond interference patterns.",
+  "timestamp": "2026-01-26T03:49:17.991269",
+  "image_file": "wobbulator_default_20260126_034917.png"
+}

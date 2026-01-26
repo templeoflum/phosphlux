@@ -1,0 +1,7 @@
+{
+  "name": "signal_chain_colorbars",
+  "device": "paik-abe",
+  "description": "Full Paik/Abe signal chain with colorbars input. All 5 stages active: wobbulator UV displacement, 7-channel matrix mixer, folding amplifier, PED amplitude window colorizer, video keyer.",
+  "timestamp": "2026-01-26T03:53:33.528698",
+  "image_file": "signal_chain_colorbars_20260126_035333.png"
+}

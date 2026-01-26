@@ -1,0 +1,7 @@
+{
+  "name": "video_keyer_default",
+  "device": "paik-abe",
+  "description": "CA3054 Video Keyer with colorbars input, clip=0.2, key_gain=1.5, softness=0.5. Shows luminance keying between original (source A) and solarized/colorized (source B).",
+  "timestamp": "2026-01-26T03:48:08.413803",
+  "image_file": "video_keyer_default_20260126_034808.png"
+}

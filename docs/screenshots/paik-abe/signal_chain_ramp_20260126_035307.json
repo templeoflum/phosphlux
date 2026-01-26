@@ -1,0 +1,7 @@
+{
+  "name": "signal_chain_ramp",
+  "device": "paik-abe",
+  "description": "Full Paik/Abe signal chain (5 stages) with horizontal ramp input. Shows wobbulator displacement, matrix mixing, wavefolding, PED colorization (blue-magenta-yellow-cyan palette), and luminance keying.",
+  "timestamp": "2026-01-26T03:53:07.479830",
+  "image_file": "signal_chain_ramp_20260126_035307.png"
+}

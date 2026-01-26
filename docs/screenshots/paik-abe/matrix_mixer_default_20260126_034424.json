@@ -1,0 +1,7 @@
+{
+  "name": "matrix_mixer_default",
+  "device": "paik-abe",
+  "description": "CA3054 Matrix Mixer with colorbars input, default params (gain=1, offset=1, mix=1), showing 7-channel weighted RGB mixing with soft limiting",
+  "timestamp": "2026-01-26T03:44:24.808829",
+  "image_file": "matrix_mixer_default_20260126_034424.png"
+}
