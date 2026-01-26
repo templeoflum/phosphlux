@@ -1,0 +1,7 @@
+# Swarm Agent System Requirements
+
+# Async HTTP client for agent communication
+aiohttp>=3.9.0
+
+# For file watching (optional, for hot-reload)
+watchdog>=3.0.0

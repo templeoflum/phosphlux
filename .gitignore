@@ -51,3 +51,11 @@ tools/device-workbench/test_signals/*.png
 /*.png
 /*.jpg
 /*.ppm
+
+# Large research PDFs (>20MB) - kept locally, splits tracked in git
+# Use tools/pdf-utils/split_pdf.py to regenerate splits from originals
+research/devices/sandin_ip/ETC_SandinIP_Manual.pdf
+research/devices/sandin_ip/Sandin_Distribution_Religion.pdf
+research/devices/paik_abe/Paik Abe Video Synthesizer Technical Documentation.pdf
+research/components/RCA_1975_Linear_ICs.pdf
+research/components/RCA_1978_Linear_IC_Databook.pdf

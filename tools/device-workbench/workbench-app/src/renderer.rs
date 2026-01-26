@@ -194,7 +194,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Create output texture for readback (use same format as surface)
+        // Create output texture for readback (matches window size)
         let output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Output Texture"),
             size: wgpu::Extent3d {
@@ -256,7 +256,7 @@ impl Renderer {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
 
-            // Recreate output texture (use same format as surface)
+            // Recreate output texture to match new size
             self.output_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Output Texture"),
                 size: wgpu::Extent3d {
@@ -481,40 +481,68 @@ impl Renderer {
         let is_bgra = matches!(self.config.format,
             wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
 
-        // Map buffer for reading
+        // Map buffer for reading with proper error handling
         let buffer_slice = self.output_buffer.slice(..);
-        buffer_slice.map_async(wgpu::MapMode::Read, |_| {});
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
         self.device.poll(wgpu::Maintain::Wait);
 
-        {
-            let data = buffer_slice.get_mapped_range();
+        // Check if mapping succeeded
+        match rx.recv() {
+            Ok(Ok(())) => {
+                // Mapping succeeded, read the data
+                let data = buffer_slice.get_mapped_range();
 
-            // Remove padding and convert BGRA to RGBA if needed
-            let mut pixels: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
-            for row in 0..height {
-                let start = (row * padded_bytes_per_row) as usize;
-                for col in 0..width as usize {
-                    let idx = start + col * 4;
-                    if is_bgra {
-                        // BGRA -> RGBA
-                        pixels.push(data[idx + 2]); // R
-                        pixels.push(data[idx + 1]); // G
-                        pixels.push(data[idx]);     // B
-                        pixels.push(data[idx + 3]); // A
-                    } else {
-                        pixels.extend_from_slice(&data[idx..idx + 4]);
+                // Remove padding and convert BGRA to RGBA if needed
+                let mut pixels: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
+                for row in 0..height {
+                    let start = (row * padded_bytes_per_row) as usize;
+                    for col in 0..width as usize {
+                        let idx = start + col * 4;
+                        if idx + 4 <= data.len() {
+                            if is_bgra {
+                                // BGRA -> RGBA
+                                pixels.push(data[idx + 2]); // R
+                                pixels.push(data[idx + 1]); // G
+                                pixels.push(data[idx]);     // B
+                                pixels.push(data[idx + 3]); // A
+                            } else {
+                                pixels.extend_from_slice(&data[idx..idx + 4]);
+                            }
+                        }
+                    }
+                }
+                drop(data); // Release the mapped range before unmapping
+
+                // Create PNG
+                match image::RgbaImage::from_raw(width, height, pixels) {
+                    Some(img) => {
+                        let mut png_bytes = Vec::new();
+                        let mut cursor = std::io::Cursor::new(&mut png_bytes);
+                        match img.write_to(&mut cursor, image::ImageFormat::Png) {
+                            Ok(_) => {
+                                let mut state = self.state.write();
+                                state.output_image = Some(png_bytes);
+                                tracing::debug!("Screenshot captured: {}x{}", width, height);
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to encode PNG: {}", e);
+                            }
+                        }
+                    }
+                    None => {
+                        tracing::error!("Failed to create image from pixels ({}x{}, {} bytes)",
+                            width, height, width * height * 4);
                     }
                 }
             }
-
-            // Create PNG
-            if let Some(img) = image::RgbaImage::from_raw(width, height, pixels) {
-                let mut png_bytes = Vec::new();
-                let mut cursor = std::io::Cursor::new(&mut png_bytes);
-                if img.write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
-                    let mut state = self.state.write();
-                    state.output_image = Some(png_bytes);
-                }
+            Ok(Err(e)) => {
+                tracing::error!("Buffer mapping failed: {:?}", e);
+            }
+            Err(e) => {
+                tracing::error!("Failed to receive mapping result: {}", e);
             }
         }
 

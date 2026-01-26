@@ -936,4 +936,62 @@ All components tested at 60 FPS using the device workbench with:
 
 ---
 
+## Research Infrastructure Overhaul
+
+### Knowledge Base Restructure (4-Layer Model)
+
+Replaced the 7-layer research pyramid with a focused 4-layer taxonomy:
+
+| Layer | Purpose | Content |
+|-------|---------|---------|
+| **Innovators** | Who built it and why | Biographies, interviews, design philosophy |
+| **Techniques** | How the signal processing works | Device-agnostic methods (wavefolding, OTA, keying) |
+| **Devices** | All per-device documentation together | Schematics, manuals, calibration, budgets |
+| **Components** | Per-IC: datasheets + versioned models | Vendor PDFs at root, WGSL models in `v1/`, `v2/` |
+
+Key decisions:
+- **No overlap**: Patents, manuals, schematics all consolidated under their device
+- **Datasheets at component root**: Reference docs are permanent, shared across model iterations
+- **Creative synthesis flags**: Tags for glitch potential, power-starve, component abuse
+
+### Full Document Retrieval Run
+
+Retrieved 31 valid PDFs across all 4 layers:
+
+**Devices (16 PDFs, ~370MB)**:
+- Paik/Abe: 7 PDFs (tech docs, schematics, budget 1972, restoration 2011, Vasulka Eigenwelt)
+- Sandin IP: 3 PDFs (Distribution Religion 34.7MB, ETC Manual 111MB, Connolly Guide 8MB)
+- Rutt/Etra: 4 PDFs (Vasulka general, synth continuation, Eigenwelt, ETC panel)
+- Jones Colorizer: 1 PDF (MVIP instructions)
+- LZX Cadet: Open source on GitHub
+
+**Components (6 PDFs, 87MB)**:
+- RCA 1975 & 1978 Linear IC Databooks (comprehensive CA30xx reference)
+- Individual datasheets: CA3046, CA3080 (+app note), LM311
+
+**Innovators (4 PDFs)**: Meigh-Andrews, Beck, 2x Vasulka Eigenwelt
+
+**Techniques (5 PDFs)**: Kane SIGGRAPH, DAFx17/SMC17 wavefolders, TI OTA, Stromeko OTA
+
+### Patent Discovery
+
+The Paik/Abe Video Synthesizer was never patented. It was an art tool, not a commercial product. The US4011557 reference found in earlier research was incorrect (it's a Swiss watch display patent by Chételat).
+
+### Swarm Agent Archived
+
+The multi-agent swarm system (`tools/swarm-agent/`) was evaluated and archived to `archive/swarm-agent-concept/`. Assessment:
+- Never completed tasks autonomously (hit max_iterations every run)
+- Research agent was scaffolding; Claude CLI + MCP tools are more capable
+- Development agent didn't generate actual code
+- Concept preserved for future reference; active development uses Claude CLI directly
+
+### Process Decision: Staged Workflow
+
+Rather than simultaneous R&D, adopted staged approach:
+1. **Research pass**: Collect all documents, identify sources
+2. **Development pass**: Model components, build emulations
+3. **Documentation**: Maintained throughout via dev logs and RESEARCH_INDEX.md
+
+---
+
 *Last updated: January 2026*

@@ -157,23 +157,6 @@ MCP server exposing Ollama models for research queries:
 | `extract_from_image` | moondream | ~10s | Component extraction from schematics |
 | `embed_document` | qwen3-embedding | ~2s | Knowledge base indexing |
 
-### Swarm Agent System (`tools/swarm-agent/`)
-
-Multi-agent architecture for parallel research and development:
-
-```
-swarm/
-├── orchestrator.py      # Coordinates agents, handles events
-├── component_agent.py   # IC lookup → spec.json → model.wgsl
-├── research_agent.py    # Ollama-powered research with token tracking
-├── token_tracker.py     # Cloud vs local cost analysis
-└── model_benchmark.py   # A/B testing for prompt optimization
-```
-
-**Token Tracking**: Monitors cloud (Claude) vs local (Ollama) usage with cost analysis.
-
-**Model Benchmarking**: A/B tests prompt variants to find optimal model configurations.
-
 ### Device Workbench (`tools/device-workbench/`)
 
 Rust/wgpu application for real-time shader testing:
@@ -189,40 +172,44 @@ Rust/wgpu application for real-time shader testing:
 
 ### Component Library (`research/components/`)
 
-Reusable analog IC and functional block models:
+Reusable analog IC and functional block models. Vendor datasheets live at the component root; WGSL model iterations are versioned in `v1/`, `v2/`, etc.
 
 ```
 components/
+├── RCA_1975_Linear_ICs.pdf          # Comprehensive CA30xx reference
+├── RCA_1978_Linear_IC_Databook.pdf  # Comprehensive CA30xx reference
 ├── ics/
-│   ├── ca3046/           # NPN Transistor Array
-│   │   ├── spec.json     # SPICE parameters, pinout
-│   │   ├── model.wgsl    # differential_pair(), current_mirror()
-│   │   └── colorizer.wgsl
-│   ├── ca3019/           # Ultra-Fast Diode Array
-│   │   ├── spec.json     # Diode characteristics
-│   │   ├── model.wgsl    # diode_transfer(), amplitude_window()
-│   │   ├── ped_control.wgsl  # Paik/Abe colorizer
-│   │   └── colorizer.wgsl
-│   ├── ca3054/           # Dual Differential Amplifier
-│   │   ├── spec.json     # Diff amp specs
-│   │   ├── model.wgsl    # diff_amp(), soft_clip()
-│   │   ├── matrix_mixer.wgsl  # 7-channel matrix
-│   │   └── video_keyer.wgsl   # Soft/hard keying
-│   ├── ca3080/           # OTA (Transconductance Amplifier)
-│   │   ├── model.wgsl    # ota_transfer(), ota_vca()
-│   │   └── vca.wgsl
-│   └── lm311/            # Voltage Comparator
-│       ├── model.wgsl    # lm311_compare(), lm311_window()
-│       └── keyer.wgsl
+│   ├── ca3046/                      # NPN Transistor Array
+│   │   ├── CA3046_Intersil_datasheet.pdf
+│   │   └── v1/
+│   │       ├── spec.json            # SPICE parameters, pinout
+│   │       ├── model.wgsl           # differential_pair(), current_mirror()
+│   │       └── colorizer.wgsl
+│   ├── ca3019/                      # Ultra-Fast Diode Array
+│   │   ├── PROVENANCE.md            # Datasheet sources, known URLs
+│   │   └── v1/
+│   │       ├── model.wgsl           # diode_transfer(), amplitude_window()
+│   │       └── ped_control.wgsl     # Paik/Abe colorizer
+│   ├── ca3054/                      # Dual Differential Amplifier
+│   │   ├── PROVENANCE.md
+│   │   └── v1/
+│   │       ├── model.wgsl           # diff_amp(), soft_clip()
+│   │       ├── matrix_mixer.wgsl    # 7-channel matrix
+│   │       └── video_keyer.wgsl     # Soft/hard keying
+│   ├── ca3080/                      # OTA (Transconductance Amplifier)
+│   │   ├── CA3080_Intersil_datasheet.pdf
+│   │   ├── CA3080_Application_Note_AN6668.pdf
+│   │   └── v1/
+│   │       ├── model.wgsl           # ota_transfer(), ota_vca()
+│   │       └── vca.wgsl
+│   └── lm311/                       # Voltage Comparator
+│       ├── LM311_TI_datasheet.pdf
+│       └── v1/
+│           ├── model.wgsl           # lm311_compare(), lm311_window()
+│           └── keyer.wgsl
 └── functional/
-    ├── folding_amp/      # Nonlinear Waveshaper
-    │   ├── spec.json
-    │   ├── model.wgsl    # fold_signal(), multi_fold()
-    │   └── folder.wgsl
-    └── wobbulator/       # CRT Scan Displacement
-        ├── spec.json
-        ├── model.wgsl    # Oscillators, displacement functions
-        └── wobbulator.wgsl
+    ├── folding_amp/                 # Nonlinear Waveshaper
+    └── wobbulator/                  # CRT Scan Displacement
 ```
 
 Each IC is modeled once and reused across any device that uses it.
@@ -267,9 +254,9 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] Per-node Frame Buffers for independent feedback
 - [x] Mixer with blend modes and luma keying
 - [x] Research orchestrator MCP server
-- [x] Swarm agent system with token tracking
 - [x] Component library (5 ICs + 2 functional blocks)
 - [x] Device workbench for shader testing
+- [x] 4-layer research knowledge base (31 PDFs across 4 v1 target devices)
 
 ### Paik/Abe Progress
 - [x] CA3046 transistor array (differential pairs)

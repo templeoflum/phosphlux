@@ -22,8 +22,12 @@ use winit::{
 
 use crate::state::AppState;
 
-const WINDOW_WIDTH: u32 = 1200;
-const WINDOW_HEIGHT: u32 = 600;
+// Fixed window size matching NTSC square-pixel equivalent
+// 640x480 = 480 visible lines (NTSC), 4:3 aspect ratio, square pixels
+// Integer scales cleanly: 2x=1280x960, 3x=1920x1440
+// This resolution matches what analog video synthesizers actually processed
+const WINDOW_WIDTH: u32 = 640;
+const WINDOW_HEIGHT: u32 = 480;
 const API_PORT: u16 = 3030;
 
 struct App {
@@ -47,7 +51,8 @@ impl ApplicationHandler for App {
         if self.window.is_none() {
             let attrs = WindowAttributes::default()
                 .with_title("Device Workbench")
-                .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+                .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+                .with_resizable(false);
 
             match event_loop.create_window(attrs) {
                 Ok(window) => {

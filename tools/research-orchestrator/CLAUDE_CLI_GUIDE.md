@@ -46,7 +46,7 @@ Output: Structured markdown with components, behavior, history
 Vision-based schematic analysis.
 
 ```
-> Analyze the schematic at research/schematics/sandin_ip_differentiator.png
+> Analyze the schematic at research/devices/sandin_ip_differentiator.png
 
 Uses: minicpm-v:latest (5.5GB)
 Output: Component list, signal flow, transfer function
@@ -95,7 +95,7 @@ Step 1: Initial Research
 
 Step 2: Find Schematics
 > [Use web search or scan documents]
-> analyze_schematic("research/schematics/rutt_etra_deflection.png")
+> analyze_schematic("research/devices/rutt_etra_deflection.png")
 
 Step 3: Extract Key Behaviors
 > research_query("Rutt/Etra Z-axis displacement", focus="behavior")
