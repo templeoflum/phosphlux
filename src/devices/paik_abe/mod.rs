@@ -159,9 +159,9 @@ fn device_paik_abe_wobulator_process(
     fn parameters(&self) -> Vec<DeviceParameter> {
         vec![
             DeviceParameter::new("h_freq", "H Frequency", 0.5, 20.0, 3.0),
-            DeviceParameter::new("h_amp", "H Amplitude", 0.0, 0.2, 0.05),
+            DeviceParameter::new("h_amp", "H Amplitude", 0.0, 0.5, 0.08),
             DeviceParameter::new("v_freq", "V Frequency", 0.5, 20.0, 2.0),
-            DeviceParameter::new("v_amp", "V Amplitude", 0.0, 0.2, 0.04),
+            DeviceParameter::new("v_amp", "V Amplitude", 0.0, 0.5, 0.06),
             DeviceParameter::new("video_mod", "Video Mod", 0.0, 0.5, 0.0),
             DeviceParameter::new("speed", "Speed", 0.0, 5.0, 0.5),
             DeviceParameter::new("phase", "Phase", 0.0, 1.0, 0.0),

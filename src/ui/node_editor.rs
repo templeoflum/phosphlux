@@ -3,6 +3,8 @@
 //! Visual node-based compositor interface for device routing.
 //! Adapted from v1 for v2's ShaderDevice / DevicePatch architecture.
 
+use std::collections::HashMap;
+use std::time::Instant;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use crate::gpu::{DeviceInstance, DevicePatch};
 use super::device_registry;
@@ -74,6 +76,15 @@ enum ConnectionDragMode {
     },
 }
 
+// ─── LFO State ───────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct LfoState {
+    pub speed: f32, // Hz
+    pub lo: f32,    // lower bound of oscillation
+    pub hi: f32,    // upper bound of oscillation
+}
+
 // ─── Node Editor State ───────────────────────────────────────
 
 pub struct NodeEditor {
@@ -91,6 +102,8 @@ pub struct NodeEditor {
     hovered_connection: Option<usize>,
     pub graph_modified: bool,
     pub params_modified: bool,
+    pub lfo_active: HashMap<(u32, String), LfoState>,
+    lfo_start: Instant,
 }
 
 impl Default for NodeEditor {
@@ -110,6 +123,8 @@ impl Default for NodeEditor {
             hovered_connection: None,
             graph_modified: false,
             params_modified: false,
+            lfo_active: HashMap::new(),
+            lfo_start: Instant::now(),
         }
     }
 }
@@ -117,6 +132,30 @@ impl Default for NodeEditor {
 impl NodeEditor {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn lfo_time(&self) -> f64 {
+        self.lfo_start.elapsed().as_secs_f64()
+    }
+
+    pub fn apply_lfos(&self, patch: &mut DevicePatch, time_secs: f64) -> bool {
+        if self.lfo_active.is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        for ((instance_id, param_name), lfo) in &self.lfo_active {
+            if let Some(device) = patch.get_device_mut(*instance_id) {
+                let center = (lfo.lo + lfo.hi) / 2.0;
+                let range = (lfo.hi - lfo.lo) / 2.0;
+                let val = center
+                    + range
+                        * (time_secs as f32 * lfo.speed * std::f32::consts::TAU).sin();
+                let val = val.clamp(lfo.lo, lfo.hi);
+                device.params.insert(param_name.clone(), val);
+                changed = true;
+            }
+        }
+        changed
     }
 
     fn screen_to_canvas(&self, screen_pos: Pos2, canvas_rect: Rect) -> Pos2 {
@@ -888,6 +927,9 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                         .map(|(_, v)| *v)
                         .unwrap_or(param.default);
 
+                    let lfo_key = (node_id, param.name.clone());
+                    let lfo_state = editor.lfo_active.get(&lfo_key).cloned();
+                    let lfo_speed = lfo_state.as_ref().map(|s| s.speed);
                     let mut val = current;
                     let label = if param.unit.is_empty() {
                         param.display_name.clone()
@@ -895,14 +937,75 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                         format!("{} ({})", param.display_name, param.unit)
                     };
 
-                    if ui.add(
-                        egui::Slider::new(&mut val, param.min..=param.max)
-                            .text(label)
-                            .drag_value_speed(0.01)
-                    ).changed() {
+                    // Slider + LFO cycle button (Off → Slow → Medium → Fast → Off)
+                    // Left click cycles speed, right click stops immediately
+                    let mut cycle_lfo = false;
+                    let mut stop_lfo = false;
+                    let mut slider_changed = false;
+                    ui.horizontal(|ui| {
+                        let (btn_label, btn_color, hover) = match lfo_speed {
+                            None => ("~", Color32::GRAY, "LFO: Off (click for Slow)"),
+                            Some(s) if s < 0.15 => ("S", Color32::from_rgb(80, 160, 80), "LFO: Slow (click for Medium, right-click to stop)"),
+                            Some(s) if s < 0.4 => ("M", Color32::from_rgb(180, 180, 60), "LFO: Medium (click for Fast, right-click to stop)"),
+                            _ => ("F", Color32::from_rgb(100, 200, 255), "LFO: Fast (click to stop)"),
+                        };
+                        let btn_response = ui.small_button(egui::RichText::new(btn_label).color(btn_color).strong())
+                            .on_hover_text(hover);
+                        if btn_response.clicked() {
+                            cycle_lfo = true;
+                        }
+                        if btn_response.secondary_clicked() {
+                            stop_lfo = true;
+                        }
+                        slider_changed = ui.add(
+                            egui::Slider::new(&mut val, param.min..=param.max)
+                                .text(&label)
+                                .drag_value_speed(0.01)
+                        ).changed();
+                    });
+
+                    if stop_lfo {
+                        editor.lfo_active.remove(&lfo_key);
+                    } else if cycle_lfo {
+                        let lo = lfo_state.as_ref().map(|s| s.lo).unwrap_or(param.min);
+                        let hi = lfo_state.as_ref().map(|s| s.hi).unwrap_or(param.max);
+                        match lfo_speed {
+                            None => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.1, lo: param.min, hi: param.max }); }
+                            Some(s) if s < 0.15 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.25, lo, hi }); }
+                            Some(s) if s < 0.4 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.5, lo, hi }); }
+                            _ => { editor.lfo_active.remove(&lfo_key); }
+                        }
+                    }
+
+                    // Show lo/hi range controls when LFO is active
+                    if editor.lfo_active.contains_key(&lfo_key) {
+                        ui.horizontal(|ui| {
+                            ui.add_space(24.0); // indent past LFO button
+                            ui.weak("Range:");
+                            let lfo = editor.lfo_active.get_mut(&lfo_key).unwrap();
+                            let mut lo = lfo.lo;
+                            let mut hi = lfo.hi;
+                            ui.add(egui::DragValue::new(&mut lo)
+                                .range(param.min..=hi)
+                                .speed(0.01)
+                                .prefix("lo: "));
+                            ui.add(egui::DragValue::new(&mut hi)
+                                .range(lo..=param.max)
+                                .speed(0.01)
+                                .prefix("hi: "));
+                            lfo.lo = lo;
+                            lfo.hi = hi;
+                        });
+                    }
+
+                    if slider_changed {
                         if let Some(device) = patch.get_device_mut(node_id) {
                             device.params.insert(param.name.clone(), val);
                             editor.params_modified = true;
+                        }
+                        // Disable LFO when user manually adjusts
+                        if lfo_speed.is_some() {
+                            editor.lfo_active.remove(&lfo_key);
                         }
                     }
                 }

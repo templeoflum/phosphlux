@@ -109,7 +109,7 @@ fn device_test_signal_process(
 
     fn parameters(&self) -> Vec<DeviceParameter> {
         vec![
-            DeviceParameter::new("mode", "Pattern", 0.0, 6.0, 0.0),
+            DeviceParameter::new("mode", "Pattern", 0.0, 6.0, 4.0),
             DeviceParameter::new("frequency", "Frequency", 1.0, 20.0, 4.0)
                 .with_unit("Hz"),
         ]

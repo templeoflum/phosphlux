@@ -1158,4 +1158,42 @@ oscillator), no edge mode handling (clamp/wrap/mirror).
 
 ---
 
+### v0.12 UI Improvements
+
+**LFO Automation System:**
+- Per-parameter sine wave LFO toggle via `~` button in inspector
+- 4-state speed cycle: Off → Slow (0.1Hz) → Medium (0.25Hz) → Fast (0.5Hz) → Off
+- Right-click LFO button to stop immediately
+- Adjustable lo/hi range bounds when LFO is active (oscillates between lo and hi instead of full param range)
+- Manual slider adjustment auto-disables LFO for that parameter
+
+**Layout:**
+- Inspector moved from right panel to left panel (below device palette) for full-width preview
+- Right panel is now preview-only with centered image and full available height
+- Wobulator amplitude ranges increased (H/V amp max 0.2 → 0.5) for more visible displacement
+
+---
+
+### Known Bug: Wobulator Bleeds Into All Preview Outputs (v0.12)
+
+**Symptom:** When a wobulator is present in the patch, its spatial displacement effect
+is visible on ALL node previews — including upstream nodes like the test signal generator
+that should not be affected. Selecting the test signal as the output device still shows
+wobbled output. The colorizer effect correctly disappears when previewing upstream of it,
+but the wobulator does not.
+
+**Root Cause (suspected):** The multi-pass render segment system always executes all
+segments in order, including the scan modulator segment for the wobulator. When the user
+changes the output device to an upstream node, the render plan should be truncated to
+exclude downstream segments — but currently all segments execute regardless of which
+device is set as the output.
+
+**Workaround:** Remove the wobulator from the patch to see clean upstream previews.
+
+**Fix:** The `build_render_plan()` function in `shader_composer.rs` needs to respect
+`patch.output_device` when determining which segments to include. Only segments that
+are in the signal path leading to the output device should execute.
+
+---
+
 *Last updated: January 2026*

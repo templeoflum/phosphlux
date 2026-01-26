@@ -190,6 +190,14 @@ impl App {
     fn render_frame(&mut self, event_loop: &ActiveEventLoop) {
         let timing = self.sync_gen.get_timing();
 
+        // Apply LFO automation before rendering
+        let lfo_time = self.node_editor.lfo_time();
+        if self.node_editor.apply_lfos(&mut self.patch, lfo_time) {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.update_params(&self.patch);
+            }
+        }
+
         // Render synth to texture (before egui build, so preview is up to date)
         if let Some(renderer) = &mut self.renderer {
             renderer.render_to_texture(timing);
@@ -328,19 +336,25 @@ fn render_node_editor_layout(
         });
     });
 
-    // Left panel - Device Palette
+    // Left panel - Device Palette + Inspector
     egui::SidePanel::left("device_palette")
         .resizable(true)
-        .default_width(150.0)
-        .width_range(120.0..=250.0)
+        .default_width(220.0)
+        .width_range(150.0..=400.0)
         .show(ctx, |ui| {
             render_node_palette(ui, node_editor, patch);
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .id_salt("inspector_scroll")
+                .show(ui, |ui| {
+                    render_inspector(ui, node_editor, patch);
+                });
         });
 
-    // Right panel - Preview + Inspector
+    // Right panel - Preview Monitor
     egui::SidePanel::right("right_panel")
         .resizable(true)
-        .default_width(400.0)
+        .default_width(500.0)
         .width_range(200.0..=1200.0)
         .show(ctx, |ui| {
             // Preview header with aspect ratio selector
@@ -369,12 +383,10 @@ fn render_node_editor_layout(
                 });
             });
 
-            // Preview display — uses available height, reserving space for inspector
+            // Preview display — full available space
             let panel_width = ui.available_width();
             let available_height = ui.available_height();
-            // Reserve at least 180px for the inspector below, use the rest for preview
-            let max_preview_height = (available_height - 180.0).max(120.0);
-            let content_area = egui::Vec2::new(panel_width.max(64.0), max_preview_height);
+            let content_area = egui::Vec2::new(panel_width.max(64.0), available_height.max(64.0));
             let preview_size = node_editor.aspect_ratio.fit_size(content_area);
             let preview_w = preview_size.x.max(64.0) as u32;
             let preview_h = preview_size.y.max(64.0) as u32;
@@ -384,8 +396,13 @@ fn render_node_editor_layout(
                 *last_preview_size = (preview_w, preview_h);
             }
 
+            // Center the preview image
+            let extra_width = (panel_width - preview_size.x).max(0.0);
+            let extra_height = (available_height - preview_size.y).max(0.0);
+            if extra_height > 0.0 {
+                ui.add_space(extra_height / 2.0);
+            }
             ui.horizontal(|ui| {
-                let extra_width = (panel_width - preview_size.x).max(0.0);
                 if extra_width > 0.0 {
                     ui.add_space(extra_width / 2.0);
                 }
@@ -397,13 +414,6 @@ fn render_node_editor_layout(
                 } else {
                     ui.label("Initializing...");
                 }
-            });
-
-            ui.separator();
-
-            // Inspector
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                render_inspector(ui, node_editor, patch);
             });
         });
 
