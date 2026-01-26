@@ -422,29 +422,29 @@ impl ShaderComposer {
             return Err(ComposeError::MissingDevice(0));
         }
 
-        let sorted = self.topological_sort(patch)?;
+        let all_sorted = self.topological_sort(patch)?;
 
-        // Check if we need multi-pass
-        let has_scan_modulators = sorted.iter().any(|&idx| {
-            patch.devices[idx].device.processing_mode() == ProcessingMode::ScanModulator
-        });
+        // Filter to only devices in the signal path to the output device
+        let reachable = Self::reachable_from_output(patch);
+        let sorted: Vec<usize> = all_sorted
+            .into_iter()
+            .filter(|&idx| reachable.contains(&patch.devices[idx].instance_id))
+            .collect();
 
-        if !has_scan_modulators {
-            // Single segment — use existing compose logic
-            let shader = self.compose_internal(patch)?;
-            let segment = SegmentShader {
-                kind: SegmentKind::Composed,
-                wgsl_source: shader.wgsl_source,
-                param_layout: shader.param_layout,
-                needs_input_texture: false,
-                device_instance_ids: patch.devices.iter().map(|d| d.instance_id).collect(),
-            };
-            return Ok(RenderPlan {
-                segments: vec![segment],
-            });
+        if sorted.is_empty() {
+            return Err(ComposeError::MissingDevice(patch.output_device));
         }
 
-        // Multi-pass segmentation
+        log::info!(
+            "Render plan: {} reachable devices out of {} total (output={})",
+            sorted.len(),
+            patch.devices.len(),
+            patch.output_device
+        );
+
+        // Segmentation: group consecutive PixelProcessors, break at ScanModulators.
+        // Always uses the segment-based path (not compose_internal) so that only
+        // reachable devices are included in the generated WGSL.
         let mut segments = Vec::new();
         let mut current_group: Vec<usize> = Vec::new();
         let mut all_prev_device_ids: HashSet<u32> = HashSet::new();
@@ -1064,6 +1064,25 @@ impl ShaderComposer {
             .devices
             .iter()
             .position(|d| d.instance_id == instance_id)
+    }
+
+    /// Find all device instance_ids that are upstream of (feed into) the output device.
+    /// Walks backwards through connections from the output device.
+    fn reachable_from_output(patch: &DevicePatch) -> HashSet<u32> {
+        let mut reachable = HashSet::new();
+        let mut queue = vec![patch.output_device];
+        reachable.insert(patch.output_device);
+
+        while let Some(device_id) = queue.pop() {
+            for conn in &patch.connections {
+                if conn.to_device == device_id && !reachable.contains(&conn.from_device) {
+                    reachable.insert(conn.from_device);
+                    queue.push(conn.from_device);
+                }
+            }
+        }
+
+        reachable
     }
 
     fn topological_sort(&self, patch: &DevicePatch) -> Result<Vec<usize>, ComposeError> {

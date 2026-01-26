@@ -1174,25 +1174,30 @@ oscillator), no edge mode handling (clamp/wrap/mirror).
 
 ---
 
-### Known Bug: Wobulator Bleeds Into All Preview Outputs (v0.12)
+### Fixed: Wobulator Bleeds Into All Preview Outputs (v0.12)
 
-**Symptom:** When a wobulator is present in the patch, its spatial displacement effect
-is visible on ALL node previews — including upstream nodes like the test signal generator
-that should not be affected. Selecting the test signal as the output device still shows
-wobbled output. The colorizer effect correctly disappears when previewing upstream of it,
-but the wobulator does not.
+**Symptom:** When a wobulator was present in the patch, its spatial displacement effect
+was visible on ALL node previews — including upstream nodes like the test signal generator
+that should not be affected.
 
-**Root Cause (suspected):** The multi-pass render segment system always executes all
-segments in order, including the scan modulator segment for the wobulator. When the user
-changes the output device to an upstream node, the render plan should be truncated to
-exclude downstream segments — but currently all segments execute regardless of which
-device is set as the output.
+**Root Cause:** Two issues in `compose_plan()` in `shader_composer.rs`:
 
-**Workaround:** Remove the wobulator from the patch to see clean upstream previews.
+1. **No reachability filter:** The render plan included ALL devices from the topological sort,
+   not just those upstream of the output device. A wobulator downstream of the selected
+   output still got its own segment and overwrote the output.
 
-**Fix:** The `build_render_plan()` function in `shader_composer.rs` needs to respect
-`patch.output_device` when determining which segments to include. Only segments that
-are in the signal path leading to the output device should execute.
+2. **Single-pass fallback included all device code:** When the reachable device filter
+   removed the wobulator (making `has_scan_modulators` false), the code fell through to
+   `compose_internal(patch)` which iterated ALL `patch.devices` — including the wobulator.
+   The wobulator's shader code references `seg_input_tex` which isn't declared in the
+   single-pass shader, causing a WGSL compilation crash.
+
+**Fix:**
+- Added `reachable_from_output()` — walks backwards through connections from the output
+  device to find all upstream devices
+- Filter the topological sort to only include reachable devices
+- Removed the single-pass `compose_internal` fallback — always use the segment-based path
+  which correctly scopes shader code to only the devices in each segment
 
 ---
 
