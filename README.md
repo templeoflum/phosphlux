@@ -290,11 +290,11 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] Ctrl+click quick-connect for rapid patch building
 - [x] LFO automation with global BPM, phase offset, and subdivide
 
-### Next: v0.15-v1.0 Roadmap
+### Next: v0.16-v1.0 Roadmap
 - [x] Cable/connector signal degradation — **v0.13 complete**
 - [x] Full Paik/Abe 5-stage chain — **v0.14 complete**
 - [x] Authentic CA3019 diode model with clipping parameter — **v0.14.1 complete**
-- [ ] **UI Overhaul** — Vintage oscilloscope aesthetic, top-down node flow (v0.15)
+- [x] UI Overhaul — Vintage oscilloscope theme, top-down node flow — **v0.15 complete**
 - [ ] CRT monitor device (phosphor persistence, scanlines, curvature, bloom)
 - [ ] Camcorder device (AGC, rolling shutter) + CRT→camera feedback loop
 - [ ] Patch save/load (JSON)

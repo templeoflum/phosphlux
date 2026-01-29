@@ -92,30 +92,37 @@ The real Paik/Abe has 5 stages. Refactored the existing colorizer into separate 
 - [ ] Create default Paik/Abe preset patch
 - [ ] Add patch save/load system (JSON)
 
-### v0.15 — UI Overhaul ("Vintage Test Equipment")
+### v0.15 — UI Overhaul ("Vintage Test Equipment") ✓
 
-Transform the UI with a cohesive vintage oscilloscope aesthetic:
+Transformed the UI with a cohesive vintage oscilloscope aesthetic:
 
 **Theme System:**
-- [ ] Create `PhosphluxTheme` struct with full color palette
-- [ ] CRT background (#0A0E0D), Bakelite panels (#1C1C1C)
-- [ ] Cream text (#F5F5DC), phosphor accents (#39FF14, #7FFF00)
-- [ ] Category colors: generators=green, Paik/Abe=yellow, Sandin=blue, Jones=orange
-- [ ] Apply theme to all egui widgets
+- [x] `PhosphluxTheme` struct with full color palette (`src/ui/theme.rs`)
+- [x] CRT background (#0A0E0D), Bakelite panels (#1C1C1C)
+- [x] Cream text (#F5F5DC), phosphor accents (#39FF14, #7FFF00)
+- [x] Category colors: generators=green, Paik/Abe=yellow, Sandin=blue, Jones=orange
+- [x] Applied theme to all egui widgets via `apply_theme()`
 
 **Node Flow:**
-- [ ] Inputs on TOP edge, outputs on BOTTOM edge
-- [ ] Vertical Bezier curves (top-down signal flow)
-- [ ] New nodes placed BELOW existing nodes
-- [ ] 3px category color bar on node top edge
+- [x] Inputs on TOP edge, outputs on BOTTOM edge
+- [x] Vertical Bezier curves (top-down signal flow)
+- [x] 3px category color bar on node top edge
 
 **Visual Polish:**
-- [ ] Node selection: yellow glow border
-- [ ] Output device: red LED indicator
-- [ ] Grid colors match theme
-- [ ] Phosphor glow on hover states
+- [x] Node selection: yellow glow border
+- [x] Output device: red LED indicator
+- [x] Grid colors match theme
+- [x] Phosphor glow on hover states
 
-### v0.16 — CRT Monitor ("Phosphors Glow")
+### v0.16 — Patch Save/Load + Default Presets
+
+- [ ] JSON patch file format
+- [ ] Save current patch (File menu)
+- [ ] Load patch from file
+- [ ] Default Paik/Abe preset patch
+- [ ] Recent files list
+
+### v0.17 — CRT Monitor ("Phosphors Glow")
 
 A `DisplayOutput` device with its own render pass and feedback pair for temporal persistence:
 
@@ -126,7 +133,7 @@ A `DisplayOutput` device with its own render pass and feedback pair for temporal
 - [ ] Shadow mask type (none/shadow mask/aperture grille) and strength
 - [ ] Ping-pong feedback pair for persistence across frames
 
-### v0.17 — Camcorder + Feedback ("The Loop Closes")
+### v0.18 — Camcorder + Feedback ("The Loop Closes")
 
 An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 
@@ -137,7 +144,7 @@ An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 - [ ] Optical connection type (dashed line, lens icon in UI)
 - [ ] CRT → Camera → Signal Chain → CRT feedback loop
 
-### v0.18-v0.19 — Additional Devices + Polish
+### v0.19 — Additional Devices + Polish
 
 - [ ] Rutt/Etra displacement (ScanModulator)
 - [ ] Sandin Image Processor devices (amplitude classifier, four-quadrant multiplier)

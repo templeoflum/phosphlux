@@ -1084,6 +1084,7 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.13**: Cable degradation — CableType enum, YIQ/YPbPr color space conversions, per-connection degradation functions, cable selector UI
 - **v0.14**: Full Paik/Abe chain — InputMatrix, PedColorizer, FoldingAmp, OutputEncoder as separate devices, Ctrl+click quick-connect, LFO BPM/offset/subdivide
 - **v0.14.1**: Authentic CA3019 model — exponential diode characteristic, clipping parameter, workbench naga validation, Ollama removal
+- **v0.15**: UI Overhaul — vintage oscilloscope theme (PhosphluxTheme), top-down node flow, category color bars, phosphor accents
 
 ---
 
@@ -1446,15 +1447,15 @@ All tests passed using the device workbench:
 
 ---
 
-## v0.15 — UI Overhaul (Planned)
+## v0.15 — UI Overhaul ("Vintage Test Equipment")
 
-### Vision
+### Overview
 
-Transform Phosphlux with a cohesive **vintage test equipment aesthetic** (Tektronix oscilloscope vibe) while changing node flow to **top-down**.
+Transformed Phosphlux with a cohesive **vintage test equipment aesthetic** (Tektronix oscilloscope vibe) and **top-down node flow**.
 
-### Color Palette
+### Theme System (`src/ui/theme.rs`)
 
-From vintage oscilloscope reference:
+Created `PhosphluxTheme` struct with complete color palette:
 
 | Category | Color | Hex |
 |----------|-------|-----|
@@ -1465,7 +1466,7 @@ From vintage oscilloscope reference:
 | Selection | Dial yellow | #FFD700 |
 | Error | Warning red | #C41E3A |
 
-### Node Categories
+### Node Category Colors
 
 | Category | Color |
 |----------|-------|
@@ -1477,20 +1478,19 @@ From vintage oscilloscope reference:
 ### Key Changes
 
 1. **Theme System** — `PhosphluxTheme` struct with all colors, applied via `apply_theme()`
-2. **Node Geometry** — Inputs on TOP, outputs on BOTTOM
+2. **Node Geometry** — Inputs on TOP edge, outputs on BOTTOM edge
 3. **Vertical Bezier** — Curves flow top-to-bottom instead of left-to-right
 4. **Node Visuals** — Dark body, 3px category color bar on top, cream text
-5. **New Node Placement** — Below existing nodes, not to the right
+5. **Phosphor Accents** — Green glow on hover, yellow selection borders
 
-### Implementation Phases
+### Files Changed
 
-1. Theme system (`src/ui/theme.rs`)
-2. Node geometry (socket positions, bezier control points)
-3. Node visuals (draw_node updates)
-4. Default placement (vertical flow)
-5. UI polish (sliders, buttons, panel headers)
-
-See `PLAN_ui_overhaul.md` for complete specification.
+| File | Changes |
+|------|---------|
+| `src/ui/theme.rs` | **NEW** — PhosphluxTheme, apply_theme() |
+| `src/ui/mod.rs` | Added `pub mod theme;` |
+| `src/ui/node_editor.rs` | Top-down socket_pos, vertical beziers, themed draw_node |
+| `src/main.rs` | Applied theme on startup |
 
 ---
 
