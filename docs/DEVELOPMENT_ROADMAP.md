@@ -86,10 +86,36 @@ The real Paik/Abe has 5 stages. Refactored the existing colorizer into separate 
 - [x] Refactor existing colorizer into separate devices
 - [x] Ctrl+click quick-connect for rapid patch building
 - [x] LFO enhancements: global BPM, per-param phase offset and subdivide
+- [x] Authentic CA3019 diode model (exponential characteristic, ~1/Vt sharpness)
+- [x] Clipping parameter (CLP pin 8 from Page 28 schematic)
+- [x] Device workbench stability (naga WGSL validation)
 - [ ] Create default Paik/Abe preset patch
 - [ ] Add patch save/load system (JSON)
 
-### v0.15 — CRT Monitor ("Phosphors Glow")
+### v0.15 — UI Overhaul ("Vintage Test Equipment")
+
+Transform the UI with a cohesive vintage oscilloscope aesthetic:
+
+**Theme System:**
+- [ ] Create `PhosphluxTheme` struct with full color palette
+- [ ] CRT background (#0A0E0D), Bakelite panels (#1C1C1C)
+- [ ] Cream text (#F5F5DC), phosphor accents (#39FF14, #7FFF00)
+- [ ] Category colors: generators=green, Paik/Abe=yellow, Sandin=blue, Jones=orange
+- [ ] Apply theme to all egui widgets
+
+**Node Flow:**
+- [ ] Inputs on TOP edge, outputs on BOTTOM edge
+- [ ] Vertical Bezier curves (top-down signal flow)
+- [ ] New nodes placed BELOW existing nodes
+- [ ] 3px category color bar on node top edge
+
+**Visual Polish:**
+- [ ] Node selection: yellow glow border
+- [ ] Output device: red LED indicator
+- [ ] Grid colors match theme
+- [ ] Phosphor glow on hover states
+
+### v0.16 — CRT Monitor ("Phosphors Glow")
 
 A `DisplayOutput` device with its own render pass and feedback pair for temporal persistence:
 
@@ -100,7 +126,7 @@ A `DisplayOutput` device with its own render pass and feedback pair for temporal
 - [ ] Shadow mask type (none/shadow mask/aperture grille) and strength
 - [ ] Ping-pong feedback pair for persistence across frames
 
-### v0.16 — Camcorder + Feedback ("The Loop Closes")
+### v0.17 — Camcorder + Feedback ("The Loop Closes")
 
 An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 
@@ -111,7 +137,7 @@ An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 - [ ] Optical connection type (dashed line, lens icon in UI)
 - [ ] CRT → Camera → Signal Chain → CRT feedback loop
 
-### v0.17-v0.19 — Additional Devices + Polish
+### v0.18-v0.19 — Additional Devices + Polish
 
 - [ ] Rutt/Etra displacement (ScanModulator)
 - [ ] Sandin Image Processor devices (amplitude classifier, four-quadrant multiplier)

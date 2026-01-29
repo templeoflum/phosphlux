@@ -150,28 +150,35 @@ Rather than implementing effects from secondhand descriptions, we model at the *
 
 ### Research Orchestrator (`tools/research-orchestrator/`)
 
-MCP server exposing Ollama models for research queries:
+MCP server providing research capabilities:
 
-| Tool | Model | Speed | Purpose |
-|------|-------|-------|---------|
-| `quick_query` | phi4-mini | ~4s | Definitions, quick facts |
-| `research_query` | qwen3 | ~22s | Deep research synthesis |
-| `generate_shader` | qwen3 | ~22s | WGSL drafts (Claude reviews) |
-| `extract_from_image` | moondream | ~10s | Component extraction from schematics |
-| `embed_document` | qwen3-embedding | ~2s | Knowledge base indexing |
+| Tool | Purpose |
+|------|---------|
+| `quick_query` | Definitions, quick facts |
+| `research_query` | Deep video synthesis research |
+| `generate_shader` | WGSL shader code drafts (Claude reviews) |
+| `embed_document` | Knowledge base indexing |
+| `search_knowledge` | Semantic search over embedded documents |
+| `retrieve_patent` | Patent search and download |
+| `retrieve_datasheet` | IC datasheet retrieval |
+| `retrieve_schematic` | Circuit schematic archives |
 
 ### Device Workbench (`tools/device-workbench/`)
 
-Rust/wgpu application for real-time shader testing:
+Rust/wgpu application for real-time shader testing with WGSL validation:
 
 | MCP Tool | Purpose |
 |----------|---------|
-| `workbench_load_shader` | Hot-reload WGSL shader |
+| `workbench_load_shader` | Hot-reload WGSL shader (naga-validated) |
 | `workbench_set_params` | Adjust uniforms in real-time |
-| `workbench_inject_signal` | Load test patterns (ramps, bars, etc.) |
+| `workbench_get_params` | Get current parameter values |
+| `workbench_inject_signal` | Load test patterns (ramps, bars, checkers) |
 | `workbench_screenshot` | Capture shader output |
 | `workbench_record_sweep` | Create parameter sweep GIFs |
+| `workbench_doc_capture` | Documentation screenshots with metadata |
 | `workbench_export_node` | Export to Phosphlux node palette |
+
+**Stability**: Workbench uses naga WGSL validation before GPU compilation, preventing crashes from invalid shader code.
 
 ### Component Library (`research/components/`)
 
@@ -270,19 +277,27 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 
 ### Paik/Abe Progress
 - [x] CA3046 transistor array (differential pairs)
-- [x] CA3019 diode array (PED Control colorizer)
+- [x] CA3019 diode array (PED Control colorizer) — **v0.14.1: proper exponential diode model**
 - [x] CA3054 dual diff amp (matrix mixer, video keyer)
 - [x] Folding amplifier (nonlinear waveshaper)
 - [x] Wobbulator (scan displacement with texture sampling)
-- [x] Colorizer device node (pixel processor, single-pass composable)
+- [x] **4 separate device nodes** matching real hardware signal path:
+  - InputMatrix (CA3054 diff amps, 7-channel weighted mixing)
+  - FoldingAmp (triangle wave folding per channel)
+  - PedColorizer (CA3019 amplitude windows, clipping control)
+  - OutputEncoder (LM741 op-amp saturation and warmth)
 - [x] Wobulator device node (scan modulator, own render pass)
+- [x] Ctrl+click quick-connect for rapid patch building
+- [x] LFO automation with global BPM, phase offset, and subdivide
 
-### Next: v0.14-v1.0 Roadmap
-- [x] Cable/connector signal degradation (composite, S-Video, component, RGB) — **v0.13 complete**
-- [ ] Full Paik/Abe 5-stage chain (input matrix, PED colorizer, folding amp, wobulator, output encoder)
+### Next: v0.15-v1.0 Roadmap
+- [x] Cable/connector signal degradation — **v0.13 complete**
+- [x] Full Paik/Abe 5-stage chain — **v0.14 complete**
+- [x] Authentic CA3019 diode model with clipping parameter — **v0.14.1 complete**
+- [ ] **UI Overhaul** — Vintage oscilloscope aesthetic, top-down node flow (v0.15)
 - [ ] CRT monitor device (phosphor persistence, scanlines, curvature, bloom)
 - [ ] Camcorder device (AGC, rolling shutter) + CRT→camera feedback loop
-- [ ] Patch save/load
+- [ ] Patch save/load (JSON)
 - [ ] Additional devices: Sandin IP, Rutt/Etra, Jones Colorizer
 - [ ] MIDI/OSC control
 - [ ] Video input: camera and file support

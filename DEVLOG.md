@@ -1082,6 +1082,8 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.11**: v2 node editor — compose-based architecture, shader composition, device registry
 - **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator H/V spatial displacement, LFO automation, reachable device filtering, routing bug fix
 - **v0.13**: Cable degradation — CableType enum, YIQ/YPbPr color space conversions, per-connection degradation functions, cable selector UI
+- **v0.14**: Full Paik/Abe chain — InputMatrix, PedColorizer, FoldingAmp, OutputEncoder as separate devices, Ctrl+click quick-connect, LFO BPM/offset/subdivide
+- **v0.14.1**: Authentic CA3019 model — exponential diode characteristic, clipping parameter, workbench naga validation, Ollama removal
 
 ---
 
@@ -1334,6 +1336,161 @@ The UX changes in v0.14 establish a "single-click" interaction pattern:
 - Right-click to disable LFO
 
 This minimal-friction approach makes complex patch building intuitive and fast.
+
+---
+
+---
+
+## v0.14.1 — Authentic CA3019 Diode Model & Workbench Stability
+
+### Overview
+
+Following v0.14's device chain refactor, this release focused on **component-level accuracy** for the PED Colorizer and **tooling stability** for the development workflow.
+
+### PED Colorizer CA3019 Fixes
+
+**Problem:** The original PED Colorizer used `smoothstep()` for amplitude window detection, which doesn't match real CA3019 diode behavior.
+
+**Solution:** Implemented proper exponential diode characteristic:
+
+```wgsl
+const PED_DIODE_SHARPNESS: f32 = 40.0;  // ~1/Vt scaled for 0-1 range
+
+fn ped_ca3019_diode_detect(signal: f32, threshold: f32, softness: f32) -> f32 {
+    let diff = (signal - threshold) / max(softness * 0.1 + 0.01, 0.01);
+    let effective_sharpness = PED_DIODE_SHARPNESS * (1.0 - softness * 0.8);
+    return 1.0 / (1.0 + exp(-diff * effective_sharpness));
+}
+```
+
+The `PED_DIODE_SHARPNESS` value of 40.0 approximates 1/Vt (where Vt ≈ 0.026V at room temperature), scaled for the 0-1 signal range.
+
+**Added Clipping Parameter:** Implemented CLP pin 8 from the Page 28 schematic:
+
+```wgsl
+fn ped_apply_clipping(signal: f32, clip_level: f32) -> f32 {
+    let max_level = max(clip_level, 0.01);
+    return min(signal, max_level) / max_level;
+}
+```
+
+This allows limiting the input signal amplitude before colorization, matching the real hardware's clipping control.
+
+### Workbench Stability
+
+**Problem:** The device workbench crashed when loading invalid WGSL shaders because `device.create_shader_module()` panics on invalid code rather than returning an error.
+
+**Solution:** Added naga-based WGSL pre-validation:
+
+```rust
+let validation_result = {
+    use naga::front::wgsl;
+    use naga::valid::{Capabilities, ValidationFlags, Validator};
+
+    match wgsl::parse_str(&shader_code) {
+        Ok(module) => {
+            let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+            match validator.validate(&module) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Validation error: {:?}", e)),
+            }
+        }
+        Err(e) => Err(format!("Parse error: {}", e.emit_to_string(&shader_code))),
+    }
+};
+```
+
+If validation fails, the workbench returns a clear error message instead of crashing.
+
+**Removed Ollama Integration:** The workbench MCP server originally included Ollama vision model integration for shader output analysis. This was removed entirely:
+- The vision model (moondream) took too long for iterative development
+- Claude handles visual verification directly via screenshots
+- Simplified the tool surface area
+
+### Multi-Input Foundation
+
+Prepared `shader_composer.rs` for future multi-input device support:
+
+```rust
+pub struct InputBinding {
+    pub port_name: String,
+    pub source_device_id: u32,
+    pub cross_segment: bool,
+    pub texture_binding_idx: Option<u32>,
+}
+```
+
+This enables devices with multiple inputs (like the full 7-input matrix mixer) once the renderer supports variable texture count bind groups.
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/devices/paik_abe/ped_colorizer.wgsl` | CA3019 diode model, clipping function |
+| `src/devices/paik_abe/mod.rs` | Added clipping parameter |
+| `src/gpu/shader_composer.rs` | InputBinding struct, multi-input prep |
+| `tools/device-workbench/workbench-app/src/renderer.rs` | Naga validation |
+| `tools/device-workbench/workbench-app/Cargo.toml` | Added naga dependency |
+| `tools/device-workbench/mcp_server.py` | Removed Ollama integration |
+| `research/audits/ped_colorizer_verification_20260129.md` | Visual verification results |
+
+### Visual Verification
+
+All tests passed using the device workbench:
+
+| Test | Result |
+|------|--------|
+| 4-Band Colorization | PASS |
+| Softness sweep (0→1) | PASS |
+| Clipping at 0.5 | PASS |
+
+---
+
+## v0.15 — UI Overhaul (Planned)
+
+### Vision
+
+Transform Phosphlux with a cohesive **vintage test equipment aesthetic** (Tektronix oscilloscope vibe) while changing node flow to **top-down**.
+
+### Color Palette
+
+From vintage oscilloscope reference:
+
+| Category | Color | Hex |
+|----------|-------|-----|
+| CRT Background | Deep black-green | #0A0E0D |
+| Panel Background | Bakelite black | #1C1C1C |
+| Primary Text | Cream label | #F5F5DC |
+| Phosphor Bright | P31 green | #39FF14 |
+| Selection | Dial yellow | #FFD700 |
+| Error | Warning red | #C41E3A |
+
+### Node Categories
+
+| Category | Color |
+|----------|-------|
+| Generators | Phosphor green (#7FFF00) |
+| Paik/Abe | Warm yellow (#FFD700) |
+| Sandin | Blue (#4169E1) |
+| Jones | Orange (#FF6600) |
+
+### Key Changes
+
+1. **Theme System** — `PhosphluxTheme` struct with all colors, applied via `apply_theme()`
+2. **Node Geometry** — Inputs on TOP, outputs on BOTTOM
+3. **Vertical Bezier** — Curves flow top-to-bottom instead of left-to-right
+4. **Node Visuals** — Dark body, 3px category color bar on top, cream text
+5. **New Node Placement** — Below existing nodes, not to the right
+
+### Implementation Phases
+
+1. Theme system (`src/ui/theme.rs`)
+2. Node geometry (socket positions, bezier control points)
+3. Node visuals (draw_node updates)
+4. Default placement (vertical flow)
+5. UI polish (sliders, buttons, panel headers)
+
+See `PLAN_ui_overhaul.md` for complete specification.
 
 ---
 
