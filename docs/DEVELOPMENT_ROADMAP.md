@@ -45,7 +45,7 @@ Initial implementation validated the architecture but ran at ~2 FPS. Archived to
 - [x] TestSignalGenerator (7 modes)
 - [x] PaikAbeColorizer and PaikAbeWobulator device nodes
 
-### Multi-Pass Renderer (v0.12 — current)
+### Multi-Pass Renderer (v0.12)
 
 - [x] ProcessingMode enum: PixelProcessor vs ScanModulator
 - [x] Render plan segmentation at scan modulator boundaries
@@ -59,16 +59,16 @@ Initial implementation validated the architecture but ran at ~2 FPS. Archived to
 
 ## Versioned Roadmap to v1.0
 
-### v0.13 — Cable Degradation ("Signal Has Character")
+### v0.13 — Cable Degradation ("Signal Has Character") ✓
 
 Different cable/connector types introduce distinct signal artifacts:
 
-- [ ] Add `CableType` to connections: Ideal, Composite, S-Video, Component, RGB
-- [ ] Create `src/shaders/cables.wgsl` with per-cable-type degradation functions
-- [ ] Composite: chroma/luma crosstalk, ~4MHz bandwidth, dot crawl
-- [ ] S-Video: separate Y/C (no crosstalk), bandwidth-limited
-- [ ] Component/RGB: wider bandwidth, minimal degradation, cable-length HF rolloff
-- [ ] Cable type selector in inspector, colored cables in node editor
+- [x] Add `CableType` to connections: Ideal, Composite, S-Video, Component, RGB
+- [x] Create `src/shaders/cables.wgsl` with per-cable-type degradation functions
+- [x] Composite: chroma/luma crosstalk, ~4MHz bandwidth, dot crawl (YIQ color space)
+- [x] S-Video: separate Y/C (no crosstalk), bandwidth-limited
+- [x] Component/RGB: wider bandwidth, minimal degradation, cable-length HF rolloff (YPbPr)
+- [x] Cable type selector in inspector, colored cables in node editor
 
 ### v0.14 — Full Paik/Abe Chain ("Authentic Signal Path")
 
