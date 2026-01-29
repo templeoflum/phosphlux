@@ -411,8 +411,23 @@ Before marking v0.13 complete, verify each cable type:
 
 ---
 
+## 7. Implementation Status
+
+**v0.13 Implementation: COMPLETE** (2026-01-29)
+
+All cable types implemented and integrated:
+- [x] `CableType` enum in `src/gpu/shader_composer.rs`
+- [x] `cables.wgsl` shader functions in `src/shaders/cables.wgsl`
+- [x] Shader composer integration via `apply_cable_degradation()`
+- [x] UI: Cable selector in inspector (click cable to select)
+- [x] UI: Colored cable wires in node editor
+- [x] Visual verification: Composite degradation visible on color bars
+
+---
+
 ## Document History
 
 | Date | Version | Changes |
 |------|---------|---------|
 | 2026-01-28 | 1.0 | Initial specification based on NTSC research |
+| 2026-01-29 | 1.1 | Marked implementation complete |

@@ -254,7 +254,7 @@ Five foundational video synthesis devices, in order:
 
 See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed component requirements and milestones.
 
-### Infrastructure Complete (v0.12)
+### Infrastructure Complete (v0.12-v0.13)
 - [x] Multi-pass compose shader architecture (segments at scan modulator boundaries)
 - [x] Reachable device filtering (only upstream devices rendered)
 - [x] Visual node editor with pan/zoom, device palette, inspector
@@ -266,6 +266,7 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] Component library (5 ICs + 2 functional blocks)
 - [x] Device workbench for shader testing
 - [x] 4-layer research knowledge base (31 PDFs across 4 v1 target devices)
+- [x] Cable degradation modeling (Composite, S-Video, Component, RGB)
 
 ### Paik/Abe Progress
 - [x] CA3046 transistor array (differential pairs)
@@ -276,8 +277,8 @@ See [docs/V1_EMULATION_ROADMAP.md](docs/V1_EMULATION_ROADMAP.md) for detailed co
 - [x] Colorizer device node (pixel processor, single-pass composable)
 - [x] Wobulator device node (scan modulator, own render pass)
 
-### Next: v0.13-v1.0 Roadmap
-- [ ] Cable/connector signal degradation (composite, S-Video, component, RGB)
+### Next: v0.14-v1.0 Roadmap
+- [x] Cable/connector signal degradation (composite, S-Video, component, RGB) — **v0.13 complete**
 - [ ] Full Paik/Abe 5-stage chain (input matrix, PED colorizer, folding amp, wobulator, output encoder)
 - [ ] CRT monitor device (phosphor persistence, scanlines, curvature, bloom)
 - [ ] Camcorder device (AGC, rolling shutter) + CRT→camera feedback loop

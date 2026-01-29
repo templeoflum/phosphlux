@@ -1081,6 +1081,7 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.10**: Component library expansion — CA3019, CA3054, folding amplifier, wobbulator
 - **v0.11**: v2 node editor — compose-based architecture, shader composition, device registry
 - **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator H/V spatial displacement, LFO automation, reachable device filtering, routing bug fix
+- **v0.13**: Cable degradation — CableType enum, YIQ/YPbPr color space conversions, per-connection degradation functions, cable selector UI
 
 ---
 
@@ -1157,6 +1158,82 @@ that should not be affected.
 - Filter the topological sort to only include reachable devices
 - Removed the single-pass `compose_internal` fallback — always use the segment-based path
   which correctly scopes shader code to only the devices in each segment
+
+---
+
+---
+
+## v0.13 — Cable Degradation ("Signal Has Character")
+
+### Overview
+
+Real analog video signals degrade as they travel through cables. Different cable types (composite, S-Video, component, RGB) have distinct characteristics based on their physical construction and bandwidth limitations. v0.13 adds authentic cable degradation modeling to the signal path.
+
+### Implementation
+
+**CableType Enum:**
+```rust
+pub enum CableType {
+    Ideal,      // No degradation (direct digital connection)
+    Composite,  // RCA: chroma/luma crosstalk, ~4MHz bandwidth, dot crawl
+    SVideo,     // Y/C separate: no crosstalk, bandwidth-limited per channel
+    Component,  // YPbPr: wider bandwidth, minimal degradation
+    Rgb,        // Direct RGB: best quality, cable-length HF rolloff
+}
+```
+
+**Shader Functions (`src/shaders/cables.wgsl`):**
+
+Each cable type has a degradation function that transforms the signal:
+
+- `composite_degrade()` — YIQ color space conversion, I/Q channel bandwidth limiting, dot crawl artifact from subcarrier interaction
+- `svideo_degrade()` — Separate Y/C processing, no crosstalk but channel bandwidth limits
+- `component_degrade()` — YPbPr conversion, minimal HF rolloff based on cable length
+- `rgb_degrade()` — Direct RGB with cable-length dependent attenuation
+
+**Color Space Conversions:**
+- RGB ↔ YIQ for NTSC composite (1953 colorimetry)
+- RGB ↔ YPbPr for component video
+
+**Shader Composition:**
+
+The `ShaderComposer::apply_cable_degradation()` method wraps input signals based on connection cable type:
+```rust
+CableType::Composite => format!("composite_degrade({}, uv, time)", signal),
+CableType::SVideo => format!("svideo_degrade({}, uv, time)", signal),
+```
+
+For `Ideal` connections, no wrapping is applied — the signal passes through unchanged.
+
+### UI Integration
+
+**Cable Selection:**
+- Click on a cable wire in the node editor to select it
+- Inspector panel shows "Connection" header with cable type options
+- Each cable type has a colored indicator matching the wire color:
+  - Gray = Ideal
+  - Yellow = Composite
+  - Cyan = S-Video
+  - Green = Component
+  - Red = RGB
+
+**Visual Feedback:**
+- Selected cables highlight white
+- Hovered cables highlight red
+- Cable colors reflect their type
+
+### Verification
+
+Composite degradation visually verified on color bars test pattern — chroma blur and dot crawl artifacts visible as expected from NTSC bandwidth limiting.
+
+### Files
+
+| File | Changes |
+|------|---------|
+| `src/shaders/cables.wgsl` | Created — YIQ/YPbPr conversions, degradation functions |
+| `src/gpu/shader_composer.rs` | Added CableType enum, Connection struct, apply_cable_degradation() |
+| `src/ui/node_editor.rs` | Added cable selection, inspector UI, colored cables |
+| `docs/CABLE_DEGRADATION_SPEC.md` | Specification document |
 
 ---
 
