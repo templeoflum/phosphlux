@@ -6,6 +6,6 @@ pub mod renderer;
 pub mod shader_composer;
 
 pub use shader_composer::{
-    DeviceInstance, DeviceParameter, DevicePatch, ParamLayout, Port, ProcessingMode, RenderPlan,
-    SegmentKind, SegmentShader, ShaderComposer, ShaderDevice, SignalType,
+    CableType, Connection, DeviceInstance, DeviceParameter, DevicePatch, ParamLayout, Port,
+    ProcessingMode, RenderPlan, SegmentKind, SegmentShader, ShaderComposer, ShaderDevice, SignalType,
 };

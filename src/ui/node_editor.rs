@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
-use crate::gpu::{DeviceInstance, DevicePatch};
+use crate::gpu::{DeviceInstance, DevicePatch, CableType};
 use super::device_registry;
 
 // ─── Aspect Ratio ─────────────────────────────────────────────
@@ -91,6 +91,7 @@ pub struct NodeEditor {
     pub pan: Vec2,
     pub zoom: f32,
     pub selected_node: Option<u32>,
+    pub selected_connection: Option<usize>,
     dragging_node: Option<u32>,
     drag_offset: Vec2,
     pending_connection: Option<(ConnectionDragMode, Pos2)>,
@@ -112,6 +113,7 @@ impl Default for NodeEditor {
             pan: Vec2::new(100.0, 100.0),
             zoom: 1.0,
             selected_node: None,
+            selected_connection: None,
             dragging_node: None,
             drag_offset: Vec2::ZERO,
             pending_connection: None,
@@ -259,6 +261,27 @@ fn node_color(device_id: &str) -> Color32 {
 
 fn is_output_device(patch: &DevicePatch, instance_id: u32) -> bool {
     patch.output_device == instance_id
+}
+
+/// Color for cable type (used in both connection drawing and inspector)
+fn cable_type_color(cable_type: &CableType) -> Color32 {
+    match cable_type {
+        CableType::Ideal => Color32::from_rgb(120, 120, 130),     // Gray - digital/ideal
+        CableType::Composite => Color32::from_rgb(220, 180, 50),  // Yellow - RCA composite
+        CableType::SVideo => Color32::from_rgb(80, 80, 80),       // Dark gray - S-Video
+        CableType::Component => Color32::from_rgb(60, 180, 60),   // Green - component
+        CableType::Rgb => Color32::from_rgb(200, 80, 80),         // Red - RGB
+    }
+}
+
+fn cable_type_name(cable_type: &CableType) -> &'static str {
+    match cable_type {
+        CableType::Ideal => "Ideal (No Degradation)",
+        CableType::Composite => "Composite (RCA)",
+        CableType::SVideo => "S-Video (Y/C)",
+        CableType::Component => "Component (YPbPr)",
+        CableType::Rgb => "RGB (Direct)",
+    }
 }
 
 // ─── Canvas rendering ─────────────────────────────────────────
@@ -570,6 +593,15 @@ fn handle_canvas_input(
                 }
             }
 
+            // Check connection selection
+            if !started_interaction {
+                if let Some(conn_idx) = editor.hovered_connection {
+                    editor.selected_connection = Some(conn_idx);
+                    editor.selected_node = None;
+                    started_interaction = true;
+                }
+            }
+
             // Check node selection/drag
             if !started_interaction {
                 let mut found_node = false;
@@ -583,12 +615,14 @@ fn handle_canvas_input(
                         editor.drag_offset = pos - node_screen;
                         editor.dragging_node = Some(device.instance_id);
                         editor.selected_node = Some(device.instance_id);
+                        editor.selected_connection = None;
                         found_node = true;
                         break;
                     }
                 }
                 if !found_node {
                     editor.selected_node = None;
+                    editor.selected_connection = None;
                 }
             }
         }
@@ -694,12 +728,15 @@ fn draw_connections(
             let end = editor.socket_pos(to, false, to_idx, canvas_rect);
 
             let is_hovered = editor.hovered_connection == Some(idx);
+            let is_selected = editor.selected_connection == Some(idx);
             let color = if is_hovered {
                 Color32::from_rgb(255, 100, 100)
+            } else if is_selected {
+                Color32::WHITE
             } else {
-                node_color(from.device.device_id())
+                cable_type_color(&conn.cable_type)
             };
-            draw_bezier_connection(painter, start, end, color, editor.zoom, is_hovered);
+            draw_bezier_connection(painter, start, end, color, editor.zoom, is_hovered || is_selected);
         }
     }
 }
@@ -884,6 +921,67 @@ pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &m
 pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut DevicePatch) {
     ui.heading("Inspector");
     ui.separator();
+
+    // Connection inspector (cable type selector)
+    if let Some(conn_idx) = editor.selected_connection {
+        if conn_idx < patch.connections.len() {
+            let conn = &patch.connections[conn_idx];
+            let from_name = patch.get_device(conn.from_device)
+                .map(|d| d.device.device_name().to_string())
+                .unwrap_or_else(|| "?".to_string());
+            let to_name = patch.get_device(conn.to_device)
+                .map(|d| d.device.device_name().to_string())
+                .unwrap_or_else(|| "?".to_string());
+            let current_cable = conn.cable_type.clone();
+
+            ui.strong("Connection");
+            ui.horizontal(|ui| {
+                ui.label(&from_name);
+                ui.label("\u{2192}");
+                ui.label(&to_name);
+            });
+            ui.separator();
+
+            ui.label("Cable Type:");
+            let cable_types = [
+                CableType::Ideal,
+                CableType::Composite,
+                CableType::SVideo,
+                CableType::Component,
+                CableType::Rgb,
+            ];
+
+            for cable in &cable_types {
+                let is_selected = current_cable == *cable;
+                let color = cable_type_color(cable);
+                let name = cable_type_name(cable);
+
+                ui.horizontal(|ui| {
+                    // Color indicator
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 2.0, color);
+
+                    if ui.selectable_label(is_selected, name).clicked() {
+                        if let Some(conn) = patch.connections.get_mut(conn_idx) {
+                            conn.cable_type = cable.clone();
+                            editor.graph_modified = true;
+                        }
+                    }
+                });
+            }
+
+            ui.separator();
+            ui.weak("Cable type affects signal quality:");
+            ui.weak("• Composite: dot crawl, chroma blur");
+            ui.weak("• S-Video: no crosstalk, cleaner");
+            ui.weak("• Component/RGB: minimal degradation");
+
+            return;
+        } else {
+            // Connection was deleted
+            editor.selected_connection = None;
+        }
+    }
 
     if let Some(node_id) = editor.selected_node {
         // Gather info first (can't borrow patch mutably while reading)

@@ -26,6 +26,9 @@ pub const COMMON_WGSL: &str = include_str!("../shaders/common.wgsl");
 /// Component library code
 pub const COMPONENTS_WGSL: &str = include_str!("../shaders/components.wgsl");
 
+/// Cable degradation functions
+pub const CABLES_WGSL: &str = include_str!("../shaders/cables.wgsl");
+
 // ─── Processing Mode ─────────────────────────────────────────
 
 /// How a device processes its input signal.
@@ -541,12 +544,15 @@ impl ShaderComposer {
     ) -> Result<SegmentShader, ComposeError> {
         let mut wgsl = String::new();
 
-        // 1. Common + components
+        // 1. Common + components + cables
         wgsl.push_str("// === COMMON ===\n");
         wgsl.push_str(COMMON_WGSL);
         wgsl.push_str("\n\n");
         wgsl.push_str("// === COMPONENTS ===\n");
         wgsl.push_str(COMPONENTS_WGSL);
+        wgsl.push_str("\n\n");
+        wgsl.push_str("// === CABLES ===\n");
+        wgsl.push_str(CABLES_WGSL);
         wgsl.push_str("\n\n");
 
         // 2. Input texture binding (if reading from previous segment)
@@ -615,12 +621,15 @@ impl ShaderComposer {
         let device = &patch.devices[device_idx];
         let mut wgsl = String::new();
 
-        // 1. Common + components
+        // 1. Common + components + cables
         wgsl.push_str("// === COMMON ===\n");
         wgsl.push_str(COMMON_WGSL);
         wgsl.push_str("\n\n");
         wgsl.push_str("// === COMPONENTS ===\n");
         wgsl.push_str(COMPONENTS_WGSL);
+        wgsl.push_str("\n\n");
+        wgsl.push_str("// === CABLES ===\n");
+        wgsl.push_str(CABLES_WGSL);
         wgsl.push_str("\n\n");
 
         // 2. Input texture (scan modulators always read from a texture)
@@ -679,6 +688,18 @@ impl ShaderComposer {
         })
     }
 
+    /// Wrap a signal expression with cable degradation based on cable type.
+    /// Returns the wrapped WGSL expression.
+    fn apply_cable_degradation(signal: &str, cable_type: &CableType) -> String {
+        match cable_type {
+            CableType::Ideal => signal.to_string(),
+            CableType::Composite => format!("composite_degrade({}, uv, time)", signal),
+            CableType::SVideo => format!("svideo_degrade({}, uv, time)", signal),
+            CableType::Component => format!("component_degrade({}, uv, 6.0)", signal), // 6ft default
+            CableType::Rgb => format!("rgb_degrade({}, uv, 6.0)", signal),             // 6ft default
+        }
+    }
+
     /// Generate the main function for a composed (pixel processor) segment.
     fn generate_segment_main(
         &self,
@@ -708,27 +729,29 @@ impl ShaderComposer {
         for &idx in device_indices {
             let device = &patch.devices[idx];
 
-            // Get input signals
+            // Get input signals (with cable degradation applied)
             let mut input_args = Vec::new();
             for input in device.device.inputs() {
                 let mut found = false;
                 for conn in &patch.connections {
                     if conn.to_device == device.instance_id && conn.to_port == input.name {
-                        if prev_device_ids.contains(&conn.from_device) {
+                        let raw_signal = if prev_device_ids.contains(&conn.from_device) {
                             // Cross-segment input: sample from previous segment's texture
                             if needs_input_texture {
-                                input_args.push(
-                                    "textureSample(seg_input_tex, seg_input_sampler, uv)"
-                                        .to_string(),
-                                );
+                                "textureSample(seg_input_tex, seg_input_sampler, uv)".to_string()
                             } else {
                                 // Previous segment has no texture — default to black
-                                input_args.push("vec4<f32>(0.0)".to_string());
+                                "vec4<f32>(0.0)".to_string()
                             }
                         } else {
                             // Same-segment input
-                            input_args.push(format!("signal_{}", conn.from_device));
-                        }
+                            format!("signal_{}", conn.from_device)
+                        };
+
+                        // Apply cable degradation based on connection type
+                        let degraded_signal =
+                            Self::apply_cable_degradation(&raw_signal, &conn.cable_type);
+                        input_args.push(degraded_signal);
                         found = true;
                         break;
                     }
@@ -841,6 +864,11 @@ impl ShaderComposer {
         // 2. Add component library
         wgsl.push_str("// === COMPONENTS ===\n");
         wgsl.push_str(COMPONENTS_WGSL);
+        wgsl.push_str("\n\n");
+
+        // 2b. Add cable degradation functions
+        wgsl.push_str("// === CABLES ===\n");
+        wgsl.push_str(CABLES_WGSL);
         wgsl.push_str("\n\n");
 
         // 3. Build parameter uniform struct
@@ -1020,13 +1048,16 @@ impl ShaderComposer {
         for device_idx in &sorted {
             let device = &patch.devices[*device_idx];
 
-            // Get input signals from connections (match by instance_id)
+            // Get input signals from connections (with cable degradation)
             let mut input_args = Vec::new();
             for input in device.device.inputs() {
                 let mut found = false;
                 for conn in &patch.connections {
                     if conn.to_device == device.instance_id && conn.to_port == input.name {
-                        input_args.push(format!("signal_{}", conn.from_device));
+                        let raw_signal = format!("signal_{}", conn.from_device);
+                        let degraded_signal =
+                            Self::apply_cable_degradation(&raw_signal, &conn.cable_type);
+                        input_args.push(degraded_signal);
                         found = true;
                         break;
                     }
