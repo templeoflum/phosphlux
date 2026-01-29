@@ -150,18 +150,17 @@ Rather than implementing effects from secondhand descriptions, we model at the *
 
 ### Research Orchestrator (`tools/research-orchestrator/`)
 
-MCP server providing research capabilities:
+MCP server for document retrieval (no external dependencies):
 
 | Tool | Purpose |
 |------|---------|
-| `quick_query` | Definitions, quick facts |
-| `research_query` | Deep video synthesis research |
-| `generate_shader` | WGSL shader code drafts (Claude reviews) |
-| `embed_document` | Knowledge base indexing |
-| `search_knowledge` | Semantic search over embedded documents |
 | `retrieve_patent` | Patent search and download |
 | `retrieve_datasheet` | IC datasheet retrieval |
 | `retrieve_schematic` | Circuit schematic archives |
+| `retrieve_manual` | Service/operation manuals |
+| `get_provenance` | Artifact provenance tracking |
+| `list_components` | WGSL component model inventory |
+| `component_history` | Component version history |
 
 ### Device Workbench (`tools/device-workbench/`)
 

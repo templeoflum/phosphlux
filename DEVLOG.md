@@ -1083,7 +1083,8 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.12**: Multi-pass render segments — ScanModulator processing mode, intermediate textures, wobulator H/V spatial displacement, LFO automation, reachable device filtering, routing bug fix
 - **v0.13**: Cable degradation — CableType enum, YIQ/YPbPr color space conversions, per-connection degradation functions, cable selector UI
 - **v0.14**: Full Paik/Abe chain — InputMatrix, PedColorizer, FoldingAmp, OutputEncoder as separate devices, Ctrl+click quick-connect, LFO BPM/offset/subdivide
-- **v0.14.1**: Authentic CA3019 model — exponential diode characteristic, clipping parameter, workbench naga validation, Ollama removal
+- **v0.14.1**: Authentic CA3019 model — exponential diode characteristic, clipping parameter, workbench naga validation
+- **v0.15.1**: Ollama removal — stripped from both workbench and research-orchestrator, Claude handles all research/generation directly
 - **v0.15**: UI Overhaul — vintage oscilloscope theme (PhosphluxTheme), top-down node flow, category color bars, phosphor accents
 
 ---
@@ -1444,6 +1445,24 @@ All tests passed using the device workbench:
 | 4-Band Colorization | PASS |
 | Softness sweep (0→1) | PASS |
 | Clipping at 0.5 | PASS |
+
+---
+
+## v0.15.1 — Ollama Removal
+
+Removed all Ollama dependencies from the tooling stack:
+
+**Workbench (`tools/device-workbench/mcp_server.py`):**
+- Removed `workbench_analyze` and `workbench_compare_visual` (vision model tools)
+- Claude handles visual verification directly via screenshots
+
+**Research Orchestrator (`tools/research-orchestrator/mcp_server.py`):**
+- Removed `quick_query`, `research_query`, `generate_shader` (LLM tools)
+- Removed `extract_from_image` (vision tool)
+- Removed `embed_document`, `search_knowledge` (embedding tools)
+- Kept only retrieval tools: patents, datasheets, schematics, manuals, provenance
+
+**Rationale:** Claude handles research, code generation, and visual analysis directly. The Ollama layer added latency without providing value.
 
 ---
 
