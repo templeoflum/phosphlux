@@ -295,13 +295,37 @@ impl Renderer {
 
         let start = Instant::now();
 
-        // Try to compile shader
-        let shader_module = match self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        // Pre-validate WGSL before sending to GPU
+        // This catches syntax errors before they cause a panic
+        let validation_result = {
+            use naga::front::wgsl;
+            use naga::valid::{Capabilities, ValidationFlags, Validator};
+
+            match wgsl::parse_str(&shader_code) {
+                Ok(module) => {
+                    let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+                    match validator.validate(&module) {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(format!("Validation error: {:?}", e)),
+                    }
+                }
+                Err(e) => Err(format!("Parse error: {}", e.emit_to_string(&shader_code))),
+            }
+        };
+
+        if let Err(error_msg) = validation_result {
+            let mut state = self.state.write();
+            state.shader_error = Some(error_msg);
+            state.status = "error".to_string();
+            state.shader_dirty = false;
+            return Ok(());
+        }
+
+        // Try to compile shader (now safe after validation)
+        let shader_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Workbench Shader"),
             source: wgpu::ShaderSource::Wgsl(shader_code.clone().into()),
-        }) {
-            module => module,
-        };
+        });
 
         // Create pipeline layout
         let pipeline_layout = self

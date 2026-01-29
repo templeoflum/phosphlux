@@ -3,13 +3,30 @@
 //! The Paik/Abe Video Synthesizer (1969-1970) was created by Nam June Paik
 //! and Shuya Abe. It was one of the first dedicated video synthesis instruments.
 //!
-//! Key characteristics:
-//! - Built around LM741 op-amps (slow slew rate = character)
-//! - Triangle wave folding for colorization
-//! - Multiple stages of distortion/folding
-//! - Warm, organic color shifts from component tolerances
+//! ## Architecture (from schematics)
 //!
-//! Reference: "Paik/Abe Video Synthesizer" documentation, EAI archives
+//! Key ICs used:
+//! - CA3019: Diode array for amplitude window detection (PED Control)
+//! - CA3022: Video amplifier
+//! - CA3023: Subcarrier amplifier
+//! - CA3046: Transistor array for keying
+//! - CA3054: Differential amplifier
+//!
+//! Signal flow:
+//! - 7 camera inputs → Keyer Switchboard → Matrix Mixer → PED Control → Video Amp → Encoder
+//!
+//! The colorization comes from the PED Control (Page 28) which uses CA3019
+//! diode arrays to create amplitude windows, NOT from wavefolding.
+//!
+//! ## Module Status
+//!
+//! - PED Colorizer: Authentic (CA3019 amplitude windows)
+//! - Input Matrix: Partial (needs multi-input for full authenticity)
+//! - Output Encoder: Partial (needs CA3022 model, not LM741)
+//! - Wavefolder: PROTOTYPE (not in actual Paik/Abe - creative tool)
+//! - Legacy Colorizer: PROTOTYPE (artistic interpretation)
+//!
+//! Reference: research/devices/paik_abe/Paik Abe Video Synthesizer Technical Documentation.pdf
 
 use crate::gpu::{DeviceParameter, Port, ProcessingMode, ShaderDevice, SignalType};
 
@@ -187,6 +204,7 @@ impl ShaderDevice for PaikAbePedColorizer {
             DeviceParameter::new("threshold_2", "Threshold 2", 0.0, 1.0, 0.50),
             DeviceParameter::new("threshold_3", "Threshold 3", 0.0, 1.0, 0.75),
             DeviceParameter::new("softness", "Softness", 0.0, 1.0, 0.25),
+            DeviceParameter::new("clipping", "Clipping (CLP)", 0.0, 1.0, 1.0),
         ]
     }
 

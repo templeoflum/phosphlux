@@ -22,24 +22,39 @@
 // - threshold_2: Mid window boundary (0.0-1.0, default 0.50)
 // - threshold_3: High window boundary (0.0-1.0, default 0.75)
 // - softness: Edge softness (0.0-1.0, default 0.25) - 0=hard edges, 1=soft analog
+// - clipping: Signal clipping level (0.0-1.0, default 1.0) - CLP pin 8 from schematic
 
-// CA3019 diode characteristics
+// CA3019 diode characteristics (from datasheet)
+// Thermal voltage at room temperature
 const PED_DIODE_VT: f32 = 0.026;
+// Forward voltage drop
 const PED_DIODE_VF: f32 = 0.65;
+// Normalized sharpness factor (scales Vt to 0-1 signal range)
+// Real diode: ~38.5 (1/Vt), we scale for video signal range
+const PED_DIODE_SHARPNESS: f32 = 40.0;
 
-// Diode conduction function (sigmoid approximation)
-fn ped_diode_conducting(signal: f32, threshold: f32) -> f32 {
-    let diff = signal - threshold;
-    let sharpness = 30.0;
-    return 1.0 / (1.0 + exp(-diff * sharpness));
+// CA3019 diode threshold detection
+// Models the exponential turn-on characteristic of matched diodes
+// Returns 0-1 indicating how much signal exceeds threshold
+fn ped_ca3019_diode_detect(signal: f32, threshold: f32, softness: f32) -> f32 {
+    // Difference from threshold, scaled by softness
+    // Lower softness = sharper transition (more like ideal diode)
+    let diff = (signal - threshold) / max(softness * 0.1 + 0.01, 0.01);
+
+    // Exponential diode characteristic: I = Is * (exp(V/Vt) - 1)
+    // Approximated as sigmoid for numerical stability
+    // sharpness derived from 1/Vt characteristic
+    let effective_sharpness = PED_DIODE_SHARPNESS * (1.0 - softness * 0.8);
+    return 1.0 / (1.0 + exp(-diff * effective_sharpness));
 }
 
-// Amplitude window with soft edges (models real diode behavior)
-fn ped_amplitude_window_soft(signal: f32, low: f32, high: f32, softness: f32) -> f32 {
-    let edge_width = max(softness * 0.15, 0.005);
-    let low_edge = smoothstep(low - edge_width, low + edge_width, signal);
-    let high_edge = smoothstep(high - edge_width, high + edge_width, signal);
-    return low_edge * (1.0 - high_edge);
+// Amplitude window using CA3019 matched diode pair
+// One diode detects "above low", another detects "above high"
+// Window = (above low) AND NOT (above high)
+fn ped_amplitude_window_ca3019(signal: f32, low: f32, high: f32, softness: f32) -> f32 {
+    let above_low = ped_ca3019_diode_detect(signal, low, softness);
+    let above_high = ped_ca3019_diode_detect(signal, high, softness);
+    return above_low * (1.0 - above_high);
 }
 
 // Classic Paik/Abe color palette for the 4 amplitude windows
@@ -67,11 +82,11 @@ fn ped_control_colorize(
     var th3 = max(max(t1, t2), t3);
     var th2 = t1 + t2 + t3 - th1 - th3;
 
-    // Create 4 amplitude windows using CA3019 diode detection
-    let w0 = ped_amplitude_window_soft(luminance, 0.0, th1, softness);
-    let w1 = ped_amplitude_window_soft(luminance, th1, th2, softness);
-    let w2 = ped_amplitude_window_soft(luminance, th2, th3, softness);
-    let w3 = ped_amplitude_window_soft(luminance, th3, 1.0, softness);
+    // Create 4 amplitude windows using CA3019 matched diode detection
+    let w0 = ped_amplitude_window_ca3019(luminance, 0.0, th1, softness);
+    let w1 = ped_amplitude_window_ca3019(luminance, th1, th2, softness);
+    let w2 = ped_amplitude_window_ca3019(luminance, th2, th3, softness);
+    let w3 = ped_amplitude_window_ca3019(luminance, th3, 1.0, softness);
 
     // Mix colors based on window membership
     var color = vec3<f32>(0.0);
@@ -83,6 +98,15 @@ fn ped_control_colorize(
     return color;
 }
 
+// Apply clipping to signal (CLP pin 8)
+// Models the signal limiting behavior before amplitude detection
+fn ped_apply_clipping(signal: f32, clip_level: f32) -> f32 {
+    // clip_level: 1.0 = no clipping, 0.0 = clip to 0
+    // Clipping limits the maximum signal level, compressing highlights
+    let max_level = max(clip_level, 0.01);
+    return min(signal, max_level) / max_level;
+}
+
 // Main PED colorizer processing function
 fn device_paik_abe_ped_colorizer_process(
     uv: vec2<f32>,
@@ -91,10 +115,14 @@ fn device_paik_abe_ped_colorizer_process(
     threshold_1: f32,
     threshold_2: f32,
     threshold_3: f32,
-    softness: f32
+    softness: f32,
+    clipping: f32
 ) -> vec4<f32> {
     // Extract luminance from input (Rec. 601)
-    let luma = dot(video_in.rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let luma_raw = dot(video_in.rgb, vec3<f32>(0.299, 0.587, 0.114));
+
+    // Apply clipping (CLP pin 8) - limits signal before window detection
+    let luma = ped_apply_clipping(luma_raw, clipping);
 
     // Get Paik/Abe color palette
     let colors = ped_paik_abe_palette();

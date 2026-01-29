@@ -146,6 +146,19 @@ pub struct Port {
     pub signal_type: SignalType,
 }
 
+/// Input binding information for multi-input support
+#[derive(Clone, Debug)]
+pub struct InputBinding {
+    /// Port name this binding is for
+    pub port_name: String,
+    /// Source device instance ID (where the signal comes from)
+    pub source_device_id: u32,
+    /// Whether this is from a previous segment (requires texture) or same segment (use signal var)
+    pub cross_segment: bool,
+    /// Texture binding index (for cross-segment inputs)
+    pub texture_binding_idx: Option<u32>,
+}
+
 /// Type of signal a port carries
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SignalType {
@@ -346,6 +359,8 @@ pub struct SegmentShader {
     pub param_layout: ParamLayout,
     /// Whether this segment reads from a previous segment's output texture
     pub needs_input_texture: bool,
+    /// Number of input textures this segment needs (for multi-input support)
+    pub input_texture_count: u32,
     /// Instance IDs of devices in this segment (for param collection)
     pub device_instance_ids: Vec<u32>,
 }
@@ -555,15 +570,52 @@ impl ShaderComposer {
         wgsl.push_str(CABLES_WGSL);
         wgsl.push_str("\n\n");
 
-        // 2. Input texture binding (if reading from previous segment)
+        // 2. Count cross-segment inputs and create texture bindings
+        // For multi-input support, we need one texture per distinct upstream segment source
+        let cross_segment_sources = self.count_cross_segment_sources(
+            patch,
+            device_indices,
+            prev_device_ids,
+        );
+        let input_texture_count = if needs_input_texture {
+            cross_segment_sources.len().max(1) as u32
+        } else {
+            0
+        };
+
         if needs_input_texture {
-            wgsl.push_str("// === SEGMENT INPUT ===\n");
-            wgsl.push_str(
-                "@group(1) @binding(0) var seg_input_tex: texture_2d<f32>;\n",
-            );
-            wgsl.push_str(
-                "@group(1) @binding(1) var seg_input_sampler: sampler;\n\n",
-            );
+            wgsl.push_str("// === SEGMENT INPUTS ===\n");
+            if cross_segment_sources.is_empty() {
+                // Single input (backwards compatible)
+                wgsl.push_str(
+                    "@group(1) @binding(0) var seg_input_tex: texture_2d<f32>;\n",
+                );
+                wgsl.push_str(
+                    "@group(1) @binding(1) var seg_input_sampler: sampler;\n\n",
+                );
+            } else {
+                // Multiple inputs - each gets its own texture binding
+                // Primary input (index 0) uses standard names for backwards compatibility
+                wgsl.push_str(
+                    "@group(1) @binding(0) var seg_input_tex: texture_2d<f32>;\n",
+                );
+                wgsl.push_str(
+                    "@group(1) @binding(1) var seg_input_sampler: sampler;\n",
+                );
+                // Additional inputs get numbered names
+                for i in 1..cross_segment_sources.len() {
+                    let binding_base = (i as u32) * 2;
+                    wgsl.push_str(&format!(
+                        "@group(1) @binding({}) var seg_input_tex_{}: texture_2d<f32>;\n",
+                        binding_base, i
+                    ));
+                    wgsl.push_str(&format!(
+                        "@group(1) @binding({}) var seg_input_sampler_{}: sampler;\n",
+                        binding_base + 1, i
+                    ));
+                }
+                wgsl.push_str("\n");
+            }
         }
 
         // 3. Parameter struct (only this segment's devices)
@@ -588,12 +640,13 @@ impl ShaderComposer {
             }
         }
 
-        // 5. Main function
-        let main_fn = self.generate_segment_main(
+        // 5. Main function (pass cross_segment_sources for multi-input routing)
+        let main_fn = self.generate_segment_main_multi_input(
             patch,
             device_indices,
             needs_input_texture,
             prev_device_ids,
+            &cross_segment_sources,
         )?;
         wgsl.push_str("// === MAIN ===\n");
         wgsl.push_str(&main_fn);
@@ -608,8 +661,35 @@ impl ShaderComposer {
             wgsl_source: wgsl,
             param_layout,
             needs_input_texture,
+            input_texture_count,
             device_instance_ids,
         })
+    }
+
+    /// Count distinct cross-segment source device IDs.
+    /// Returns a Vec mapping source device ID to texture index.
+    fn count_cross_segment_sources(
+        &self,
+        patch: &DevicePatch,
+        device_indices: &[usize],
+        prev_device_ids: &HashSet<u32>,
+    ) -> Vec<u32> {
+        let mut sources = Vec::new();
+        for &idx in device_indices {
+            let device = &patch.devices[idx];
+            for input in device.device.inputs() {
+                for conn in &patch.connections {
+                    if conn.to_device == device.instance_id && conn.to_port == input.name {
+                        if prev_device_ids.contains(&conn.from_device) {
+                            if !sources.contains(&conn.from_device) {
+                                sources.push(conn.from_device);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        sources
     }
 
     /// Build a scan modulator segment (single device, reads from input texture).
@@ -684,6 +764,7 @@ impl ShaderComposer {
             wgsl_source: wgsl,
             param_layout,
             needs_input_texture: true,
+            input_texture_count: 1, // Scan modulators currently support single input
             device_instance_ids: vec![device.instance_id],
         })
     }
@@ -745,6 +826,127 @@ impl ShaderComposer {
                                 "textureSample(seg_input_tex, seg_input_sampler, uv)".to_string()
                             } else {
                                 // Previous segment has no texture — default to black
+                                "vec4<f32>(0.0)".to_string()
+                            }
+                        } else {
+                            // Same-segment input
+                            format!("signal_{}", conn.from_device)
+                        };
+
+                        // Apply cable degradation based on connection type
+                        let degraded_signal =
+                            Self::apply_cable_degradation(&raw_signal, &conn.cable_type);
+                        input_args.push(degraded_signal);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    input_args.push("vec4<f32>(0.0)".to_string());
+                }
+            }
+
+            // Parameter args
+            let mut param_args = Vec::new();
+            for param in device.device.parameters() {
+                let param_name = format!(
+                    "{}_{}_{}",
+                    device.device.device_id(),
+                    device.instance_id,
+                    param.name
+                );
+                param_args.push(format!("params.{}", param_name));
+            }
+
+            let mut all_args = Vec::new();
+            all_args.extend(input_args);
+            all_args.extend(param_args);
+
+            let fn_name = format!("device_{}_process", device.device.device_id());
+
+            wgsl.push_str(&format!(
+                "    signal_{} = {}(uv, time{}{});\n",
+                device.instance_id,
+                fn_name,
+                if all_args.is_empty() { "" } else { ", " },
+                all_args.join(", ")
+            ));
+        }
+
+        // Return the output device's signal (or last device in segment)
+        let output_id = device_indices
+            .iter()
+            .rev()
+            .find(|&&idx| patch.devices[idx].instance_id == patch.output_device)
+            .map(|&idx| patch.devices[idx].instance_id)
+            .unwrap_or_else(|| {
+                patch.devices[*device_indices.last().unwrap()].instance_id
+            });
+
+        wgsl.push_str(&format!("\n    return signal_{};\n", output_id));
+        wgsl.push_str("}\n");
+
+        Ok(wgsl)
+    }
+
+    /// Generate the main function for a composed segment with multi-input support.
+    /// cross_segment_sources maps source device IDs to their texture index.
+    fn generate_segment_main_multi_input(
+        &self,
+        patch: &DevicePatch,
+        device_indices: &[usize],
+        needs_input_texture: bool,
+        prev_device_ids: &HashSet<u32>,
+        cross_segment_sources: &[u32],
+    ) -> Result<String, ComposeError> {
+        let mut wgsl = String::new();
+
+        wgsl.push_str("@fragment\n");
+        wgsl.push_str("fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n");
+        wgsl.push_str("    let uv = in.uv;\n");
+        wgsl.push_str("    let time = timing.time;\n\n");
+
+        // Declare signal variables for this segment's devices
+        for &idx in device_indices {
+            let device = &patch.devices[idx];
+            wgsl.push_str(&format!(
+                "    var signal_{}: vec4<f32> = vec4<f32>(0.0);\n",
+                device.instance_id
+            ));
+        }
+        wgsl.push_str("\n");
+
+        // Generate device calls in topological order
+        for &idx in device_indices {
+            let device = &patch.devices[idx];
+
+            // Get input signals (with cable degradation applied)
+            // Multi-input: map each input port to its correct texture or signal
+            let mut input_args = Vec::new();
+            for input in device.device.inputs() {
+                let mut found = false;
+                for conn in &patch.connections {
+                    if conn.to_device == device.instance_id && conn.to_port == input.name {
+                        let raw_signal = if prev_device_ids.contains(&conn.from_device) {
+                            // Cross-segment input: sample from the correct texture
+                            if needs_input_texture {
+                                // Find which texture index this source maps to
+                                let tex_idx = cross_segment_sources
+                                    .iter()
+                                    .position(|&id| id == conn.from_device)
+                                    .unwrap_or(0);
+
+                                if tex_idx == 0 {
+                                    // Primary texture uses standard names
+                                    "textureSample(seg_input_tex, seg_input_sampler, uv)".to_string()
+                                } else {
+                                    // Additional textures use numbered names
+                                    format!(
+                                        "textureSample(seg_input_tex_{}, seg_input_sampler_{}, uv)",
+                                        tex_idx, tex_idx
+                                    )
+                                }
+                            } else {
                                 "vec4<f32>(0.0)".to_string()
                             }
                         } else {

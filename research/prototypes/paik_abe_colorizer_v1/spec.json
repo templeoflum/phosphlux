@@ -1,0 +1,55 @@
+{
+  "name": "Paik/Abe Colorizer (Artistic Interpretation)",
+  "version": "1.0.0",
+  "type": "prototype",
+  "status": "working",
+  "created_date": "2026-01-25",
+  "classification_date": "2026-01-29",
+
+  "description": "Triangle wave folding colorizer inspired by Paik/Abe aesthetics. This is an ARTISTIC INTERPRETATION, not an authentic circuit emulation.",
+
+  "authenticity": {
+    "is_authentic": false,
+    "reason": "Based on online descriptions mentioning 'folding' behavior, not actual schematics. Real Paik/Abe uses CA3019 diode array for amplitude window detection, not triangle wave folding.",
+    "schematic_basis": "None - creative interpretation",
+    "notes": "The 'folding' concept was derived from loose descriptions like 'folds over or inverts high level signals'. Actual schematics (Page 28 PED.CONT) show amplitude window circuits using CA3019."
+  },
+
+  "technical": {
+    "approach": "Triangle wave folding with per-channel gain",
+    "transfer_function": "fold(x) = abs(fract(x * gain * 0.5 + 0.25) * 2.0 - 1.0)",
+    "claimed_components": ["LM741 (not in actual Paik/Abe)"],
+    "actual_paik_abe_components": ["CA3019", "CA3022", "CA3023", "CA3046", "CA3054"]
+  },
+
+  "parameters": {
+    "gain_r": {"range": [0.5, 8.0], "default": 2.0, "description": "Red channel fold gain"},
+    "gain_g": {"range": [0.5, 8.0], "default": 2.5, "description": "Green channel fold gain"},
+    "gain_b": {"range": [0.5, 8.0], "default": 3.0, "description": "Blue channel fold gain"},
+    "fold_depth": {"range": [1, 5], "default": 2, "description": "Number of folding stages"},
+    "saturation": {"range": [0, 2], "default": 1.0, "description": "Color saturation"},
+    "slew": {"range": [0, 1], "default": 0.3, "description": "Slew rate character"}
+  },
+
+  "artistic_value": {
+    "visual_character": "Psychedelic rainbow banding from luminance, similar aesthetic to real Paik/Abe but via different mechanism",
+    "use_cases": [
+      "Creative video synthesis",
+      "Retro/psychedelic effects",
+      "When exact authenticity is not required"
+    ],
+    "comparison_to_authentic": "Produces more 'folded' appearance with sharper transitions vs. the softer amplitude-windowed look of authentic PED Control"
+  },
+
+  "files": {
+    "shader": "src/devices/paik_abe/colorizer.wgsl",
+    "device": "src/devices/paik_abe/colorizer.rs (if exists)",
+    "screenshots": []
+  },
+
+  "future": {
+    "keep_available": true,
+    "reason": "Valuable creative tool, just needs proper classification",
+    "potential_evolution": "Could become basis for 'Serge-style wavefolder' or generic video wavefolder module"
+  }
+}

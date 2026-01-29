@@ -17,6 +17,7 @@ wgpu = "23"
 winit = "0.30"
 pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
+naga = { version = "23", features = ["wgsl-in"] }
 
 # Image handling
 image = "0.25"

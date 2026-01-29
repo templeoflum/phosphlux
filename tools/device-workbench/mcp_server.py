@@ -12,8 +12,7 @@ Tools:
   - Shader control (load, reload, get errors)
   - Parameter adjustment
   - Screenshot capture
-  - Visual comparison (reference vs output)
-  - Vision model analysis
+  - Visual comparison (diff metrics)
   - Test signal injection
   - Documentation helpers
 """
@@ -26,7 +25,6 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 import httpx
-import ollama
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
@@ -40,9 +38,6 @@ BASE_DIR = Path(__file__).parent.parent.parent
 SCREENSHOTS_DIR = BASE_DIR / "docs" / "screenshots"
 REFERENCES_DIR = BASE_DIR / "tools" / "references"
 TEST_SIGNALS_DIR = Path(__file__).parent / "test_signals"
-
-# Vision model for analysis
-VISION_MODEL = "moondream:latest"
 
 server = Server("device-workbench")
 
@@ -71,22 +66,6 @@ async def workbench_request(method: str, endpoint: str, **kwargs) -> dict:
             return {"image_data": base64.b64encode(response.content).decode()}
         else:
             return {"text": response.text}
-
-
-def vision_analyze(image_path: str, prompt: str) -> str:
-    """Analyze image with vision model."""
-    with open(image_path, "rb") as f:
-        image_data = base64.b64encode(f.read()).decode()
-
-    response = ollama.chat(
-        model=VISION_MODEL,
-        messages=[{
-            "role": "user",
-            "content": prompt,
-            "images": [image_data]
-        }]
-    )
-    return response["message"]["content"]
 
 
 def save_screenshot(image_data: bytes, name: str, subdir: str = "") -> Path:
@@ -218,35 +197,6 @@ async def list_tools():
                 },
             }
         ),
-        Tool(
-            name="workbench_analyze",
-            description="Use vision model to analyze current output. Describe what you see.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "What to analyze/look for",
-                        "default": "Describe the visual effect shown in this image."
-                    }
-                },
-            }
-        ),
-        Tool(
-            name="workbench_compare_visual",
-            description="Use vision model to compare output vs reference. Describes differences.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "focus": {
-                        "type": "string",
-                        "description": "What aspect to focus comparison on",
-                        "enum": ["colors", "edges", "contrast", "overall", "artifacts"]
-                    }
-                },
-            }
-        ),
-
         # === Test Signals ===
         Tool(
             name="workbench_inject_signal",
@@ -370,10 +320,6 @@ async def call_tool(name: str, arguments: dict):
             return await handle_screenshot(arguments)
         elif name == "workbench_diff":
             return await handle_diff(arguments)
-        elif name == "workbench_analyze":
-            return await handle_analyze(arguments)
-        elif name == "workbench_compare_visual":
-            return await handle_compare_visual(arguments)
         elif name == "workbench_inject_signal":
             return await handle_inject_signal(arguments)
         elif name == "workbench_doc_capture":
@@ -531,80 +477,6 @@ async def handle_diff(args: dict):
         output += f"\nDiff image saved: {diff_path}"
 
     return [TextContent(type="text", text=output)]
-
-
-async def handle_analyze(args: dict):
-    """Analyze output with vision model."""
-    prompt = args.get("prompt", "Describe the visual effect shown in this image.")
-
-    # Get screenshot
-    result = await workbench_request("GET", "/screenshot")
-    image_data = base64.b64decode(result["image_data"])
-
-    # Save temporarily for vision model
-    temp_path = Path(__file__).parent / "temp_screenshot.png"
-    with open(temp_path, "wb") as f:
-        f.write(image_data)
-
-    # Analyze with vision model
-    analysis = vision_analyze(str(temp_path), prompt)
-
-    # Cleanup
-    temp_path.unlink(missing_ok=True)
-
-    return [TextContent(
-        type="text",
-        text=f"[VISION ANALYSIS]\n{analysis}"
-    )]
-
-
-async def handle_compare_visual(args: dict):
-    """Visual comparison of output vs reference."""
-    focus = args.get("focus", "overall")
-
-    # Get both images
-    output_result = await workbench_request("GET", "/screenshot")
-
-    # For comparison, we need reference too - get from state
-    state = await workbench_request("GET", "/state")
-    if not state.get("has_reference"):
-        return [TextContent(type="text", text="[ERROR] No reference image loaded")]
-
-    ref_result = await workbench_request("GET", "/reference")
-
-    # Save both temporarily
-    temp_output = Path(__file__).parent / "temp_output.png"
-    temp_ref = Path(__file__).parent / "temp_reference.png"
-
-    with open(temp_output, "wb") as f:
-        f.write(base64.b64decode(output_result["image_data"]))
-    with open(temp_ref, "wb") as f:
-        f.write(base64.b64decode(ref_result["image_data"]))
-
-    focus_prompts = {
-        "colors": "Compare the colors between these two images. What color differences do you see?",
-        "edges": "Compare the edges and transitions. Are they sharper or softer in one image?",
-        "contrast": "Compare the contrast and dynamic range. Which has more/less contrast?",
-        "overall": "Compare these two images overall. What are the main differences?",
-        "artifacts": "Look for any visual artifacts, banding, or errors in the second image compared to the first."
-    }
-
-    prompt = f"""I'm comparing a reference image (first) to my shader output (second).
-{focus_prompts.get(focus, focus_prompts['overall'])}
-Be specific about what needs to change to make the output match the reference."""
-
-    # Analyze - note: for true comparison we'd need multi-image support
-    # For now, analyze output and ask about differences
-    analysis = vision_analyze(str(temp_output), prompt)
-
-    # Cleanup
-    temp_output.unlink(missing_ok=True)
-    temp_ref.unlink(missing_ok=True)
-
-    return [TextContent(
-        type="text",
-        text=f"[VISUAL COMPARISON - {focus.upper()}]\n{analysis}"
-    )]
 
 
 async def handle_inject_signal(args: dict):

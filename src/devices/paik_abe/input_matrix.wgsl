@@ -1,23 +1,30 @@
 // ============================================
-// PAIK/ABE INPUT MATRIX
+// PAIK/ABE INPUT MATRIX (SIMPLIFIED)
 // ============================================
 //
-// 7-channel to RGB matrix mixer based on CA3054 differential amplifiers.
-// This is the input stage of the Paik/Abe Video Synthesizer.
+// AUTHENTICITY NOTE:
+// The real Paik/Abe has 7 physical camera inputs (Page 14/18 Keyer Switchboard).
+// This simplified version derives 7 "virtual channels" from a single input.
+// This is a practical workaround while the multi-input system is developed.
 //
-// The real hardware takes 7 video inputs and creates weighted RGB outputs.
-// In this emulation, we derive the 7 channels from a single input:
-//   Ch1: Luminance
+// For authentic recreation, would need:
+// - 7 actual video inputs routed to the mixer
+// - Full keyer switchboard with INV/NOR switches
+// - Per-channel gain controls
+//
+// Virtual channel derivation (single-input mode):
+//   Ch1: Luminance (Y)
 //   Ch2: Red component
 //   Ch3: Green component
 //   Ch4: Blue component
-//   Ch5: Inverted luminance
-//   Ch6: Luminance squared (creates contrast)
-//   Ch7: Mid-gray offset
+//   Ch5: Inverted luminance (1-Y)
+//   Ch6: Luminance squared (contrast enhancement)
+//   Ch7: Mid-gray offset (0.5)
 //
 // The matrix mixing uses CA3054-style soft limiting for authentic behavior.
 //
-// Reference: research/components/ics/ca3054/v1/matrix_mixer.wgsl
+// Reference: research/devices/paik_abe/ Pages 14, 18, 24
+// IC Model: research/components/ics/ca3054/v1/spec.json
 //
 // Parameters:
 // - r_mix: Red channel output gain (0.0-2.0, default 1.0)

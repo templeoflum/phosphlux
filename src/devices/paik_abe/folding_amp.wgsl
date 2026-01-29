@@ -1,22 +1,26 @@
 // ============================================
-// PAIK/ABE FOLDING AMPLIFIER
+// VIDEO WAVEFOLDER (PROTOTYPE)
 // ============================================
 //
-// Standalone folding amplifier extracted from the Paik/Abe Video Synthesizer.
-// This is the heart of the Paik/Abe color generation effect.
+// STATUS: ARTISTIC INTERPRETATION - NOT AUTHENTIC TO PAIK/ABE
+// See: research/prototypes/paik_abe_folding_amp_v1/spec.json
 //
-// The folding amplifier takes an input signal and "folds" it back on itself
-// when it exceeds certain thresholds, creating the characteristic psychedelic
-// color banding effect. Different gain values for R/G/B channels create
-// the distinctive color shifts.
+// This is a triangle wave folding module inspired by audio synthesis
+// wavefolders (Serge, Buchla). It is NOT present in actual Paik/Abe
+// schematics.
 //
-// Circuit behavior:
-// - Triangle wave folding creates harmonic overtones
-// - Multiple stages produce richer, more complex patterns
-// - Slight asymmetry from component tolerances adds organic character
-// - Soft saturation at fold peaks models transistor behavior
+// AUTHENTICITY NOTE (2026-01-29):
+// The real Paik/Abe creates color through CA3019 amplitude window
+// detection (PED Control, schematic page 28), NOT wavefolding.
+// The "folding" terminology came from loose descriptions of the
+// nonlinear behavior.
 //
-// Reference: research/components/functional/folding_amp/v1/model.wgsl
+// For authentic Paik/Abe colorization, use: paik_abe_ped_colorizer
+//
+// This module is useful for:
+// - Video waveshaping effects (solarization-like)
+// - Pre-processing before colorizers
+// - Creative luminance manipulation
 //
 // Parameters:
 // - gain: Fold amount (1.0-8.0, default 2.0) - higher = more folds

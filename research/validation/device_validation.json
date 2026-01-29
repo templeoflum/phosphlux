@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "description": "Device validation registry - tracks workbench validation status for each device",
+
+  "devices": {
+    "test_signal": {
+      "validated": true,
+      "validation_date": "2026-01-25",
+      "validation_notes": "Utility signal generator for testing - not a historical device emulation. Generates standard test patterns (ramps, colorbars, checkerboard, oscillators).",
+      "reference_doc": null,
+      "screenshots": []
+    },
+
+    "paik_abe_colorizer": {
+      "validated": false,
+      "validation_date": "2026-01-29",
+      "validation_notes": "RECLASSIFIED AS PROTOTYPE: Triangle wave folding approach is NOT authentic to Paik/Abe schematics. Actual Paik/Abe uses CA3019 amplitude windows (PED Control, Page 28). This module is an artistic interpretation - valuable for creative use but not historically accurate. See: research/prototypes/paik_abe_colorizer_v1/spec.json",
+      "reference_doc": null,
+      "prototype_spec": "research/prototypes/paik_abe_colorizer_v1/spec.json",
+      "screenshots": [
+        "docs/screenshots/paik_abe/folding_amplifier_20260125_063503.png",
+        "docs/screenshots/paik_abe/ped_control_colorizer_20260125_061443.png"
+      ],
+      "authenticity": {
+        "is_authentic": false,
+        "classification": "artistic_interpretation",
+        "authentic_alternative": "paik_abe_ped_colorizer"
+      }
+    },
+
+    "paik_abe_wobulator": {
+      "validated": true,
+      "validation_date": "2026-01-25",
+      "validation_notes": "Scan modulator with video-driven displacement",
+      "reference_doc": "research/components/functional/wobbulator/v1/spec.json",
+      "screenshots": [
+        "docs/screenshots/wobbulator/wobbulator_colorbars_20260125_074759.png",
+        "docs/screenshots/wobbulator/wobbulator_intense_20260125_074811.png",
+        "docs/screenshots/sweeps/wobbulator_animation.gif"
+      ]
+    },
+
+    "paik_abe_input_matrix": {
+      "validated": true,
+      "validation_date": "2026-01-29",
+      "validation_notes": "VALIDATED - CA3054 soft limiting produces pastel colors, RGB mix controls work, rotation provides subtle cross-channel modulation",
+      "reference_doc": "research/components/ics/ca3054/v1/spec.json",
+      "screenshots": [
+        "docs/screenshots/paik_abe_input_matrix/input_matrix_validated_20260129_032536.png"
+      ]
+    },
+
+    "paik_abe_folding_amp": {
+      "validated": false,
+      "validation_date": "2026-01-29",
+      "validation_notes": "RECLASSIFIED AS PROTOTYPE: No 'folding amplifier' exists in actual Paik/Abe schematics. The real colorization uses CA3019 amplitude windows (PED Control, Page 28). This wavefolder is a creative tool inspired by audio synthesis concepts (Serge/Buchla). See: research/prototypes/paik_abe_folding_amp_v1/spec.json",
+      "reference_doc": null,
+      "prototype_spec": "research/prototypes/paik_abe_folding_amp_v1/spec.json",
+      "screenshots": [
+        "docs/screenshots/paik_abe_folding_amp/folding_amp_validated_20260129_032314.png"
+      ],
+      "authenticity": {
+        "is_authentic": false,
+        "classification": "artistic_interpretation",
+        "notes": "Useful for video waveshaping effects, just not authentic to Paik/Abe"
+      }
+    },
+
+    "paik_abe_ped_colorizer": {
+      "validated": true,
+      "validation_date": "2026-01-29",
+      "validation_notes": "VALIDATED - Classic Paik/Abe 4-window colorization (blue→magenta→yellow→cyan), CA3019 amplitude detection working, softness controls edge transitions",
+      "reference_doc": "research/components/ics/ca3019/v1/spec.json",
+      "screenshots": [
+        "docs/screenshots/paik_abe_ped_colorizer/ped_colorizer_validated_20260129_032701.png"
+      ]
+    },
+
+    "paik_abe_output_encoder": {
+      "validated": true,
+      "validation_date": "2026-01-29",
+      "validation_notes": "VALIDATED - LM741 rail saturation (87% limit), warmth shifts color temperature, thermal drift modeling working",
+      "reference_doc": null,
+      "screenshots": [
+        "docs/screenshots/paik_abe_output_encoder/output_encoder_validated_20260129_032826.png"
+      ]
+    }
+  },
+
+  "validation_requirements": {
+    "minimum_tests": [
+      "ramp_h - Horizontal grayscale ramp",
+      "ramp_v - Vertical grayscale ramp",
+      "colorbars - SMPTE color bars",
+      "parameter_sweep - Sweep each parameter through full range"
+    ],
+    "required_artifacts": [
+      "At least 2 screenshots showing device behavior",
+      "Parameter sweep GIF for primary parameter",
+      "JSON metadata for each screenshot"
+    ],
+    "documentation": [
+      "Reference to source schematic or spec",
+      "Notes on any deviations from original",
+      "Tuning decisions and rationale"
+    ]
+  }
+}

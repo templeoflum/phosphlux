@@ -8,6 +8,7 @@ use std::time::Instant;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use crate::gpu::{DeviceInstance, DevicePatch, CableType};
 use super::device_registry;
+use super::theme::theme;
 
 // ─── Aspect Ratio ─────────────────────────────────────────────
 
@@ -205,9 +206,14 @@ impl NodeEditor {
             Pos2::new(device.position.0, device.position.1),
             canvas_rect,
         );
-        let port_count = device.device.inputs().len().max(device.device.outputs().len()).max(1);
-        let height = (20.0 + port_count as f32 * 20.0) * self.zoom;
-        let width = 130.0 * self.zoom;
+        // Top-down flow: wider nodes with ports distributed horizontally
+        let input_count = device.device.inputs().len().max(1);
+        let output_count = device.device.outputs().len().max(1);
+        let max_ports = input_count.max(output_count);
+        // Base width 160px, expand for more ports
+        let width = (160.0 + (max_ports.saturating_sub(2)) as f32 * 30.0) * self.zoom;
+        // Fixed height for cleaner appearance
+        let height = 70.0 * self.zoom;
         Rect::from_min_size(pos, Vec2::new(width, height))
     }
 
@@ -218,14 +224,30 @@ impl NodeEditor {
         } else {
             device.device.inputs().len()
         };
-        let spacing = (rect.height() - 20.0 * self.zoom) / port_count.max(1) as f32;
-        let y = rect.min.y + 20.0 * self.zoom + spacing * (index as f32 + 0.5);
 
-        if is_output {
-            Pos2::new(rect.max.x, y)
+        // Top-down flow: ports distributed horizontally
+        // Inputs on TOP edge, outputs on BOTTOM edge
+        let padding = 20.0 * self.zoom;
+        let available_width = rect.width() - 2.0 * padding;
+        let spacing = if port_count > 1 {
+            available_width / (port_count - 1) as f32
         } else {
-            Pos2::new(rect.min.x, y)
-        }
+            0.0
+        };
+
+        let x = if port_count == 1 {
+            rect.center().x
+        } else {
+            rect.min.x + padding + spacing * index as f32
+        };
+
+        let y = if is_output {
+            rect.max.y // Outputs on bottom
+        } else {
+            rect.min.y // Inputs on top
+        };
+
+        Pos2::new(x, y)
     }
 
     fn socket_radius(&self) -> f32 {
@@ -233,9 +255,10 @@ impl NodeEditor {
     }
 
     fn point_near_bezier(&self, point: Pos2, start: Pos2, end: Pos2, threshold: f32) -> bool {
-        let control_offset = ((end.x - start.x).abs() * 0.5).max(50.0 * self.zoom);
-        let ctrl1 = Pos2::new(start.x + control_offset, start.y);
-        let ctrl2 = Pos2::new(end.x - control_offset, end.y);
+        // Vertical bezier: control points offset in Y direction
+        let control_offset = ((end.y - start.y).abs() * 0.5).max(50.0 * self.zoom);
+        let ctrl1 = Pos2::new(start.x, start.y + control_offset);
+        let ctrl2 = Pos2::new(end.x, end.y - control_offset);
 
         for i in 0..=20 {
             let t = i as f32 / 20.0;
@@ -271,21 +294,33 @@ fn port_index_to_name(device: &DeviceInstance, is_output: bool, index: usize) ->
 // ─── Node coloring ────────────────────────────────────────────
 
 fn node_color(device_id: &str) -> Color32 {
-    if device_id.starts_with("test_") {
-        Color32::from_rgb(80, 140, 80)        // Green — generators
-    } else if device_id.starts_with("paik_abe_") {
-        Color32::from_rgb(160, 110, 60)        // Warm orange — Paik/Abe
-    } else if device_id.starts_with("sandin_") {
-        Color32::from_rgb(80, 100, 140)        // Blue — Sandin
-    } else if device_id.starts_with("jones_") {
-        Color32::from_rgb(140, 80, 140)        // Purple — Jones
-    } else {
-        Color32::from_rgb(100, 100, 100)       // Gray — default
-    }
+    theme().category_color(device_id)
 }
 
 fn is_output_device(patch: &DevicePatch, instance_id: u32) -> bool {
     patch.output_device == instance_id
+}
+
+/// Find a good position for a new node: below existing nodes for top-down flow
+fn find_new_node_position(patch: &DevicePatch) -> (f32, f32) {
+    if patch.devices.is_empty() {
+        return (100.0, 50.0);
+    }
+
+    // Find the lowest (highest Y) node
+    let mut max_y: f32 = 0.0;
+    let mut avg_x: f32 = 0.0;
+    for device in &patch.devices {
+        let bottom_y = device.position.1 + 80.0; // Approximate node height
+        if bottom_y > max_y {
+            max_y = bottom_y;
+        }
+        avg_x += device.position.0;
+    }
+    avg_x /= patch.devices.len() as f32;
+
+    // Place new node below with some spacing, centered horizontally
+    (avg_x, max_y + 40.0)
 }
 
 /// Color for cable type (used in both connection drawing and inspector)
@@ -337,7 +372,8 @@ pub fn render_node_canvas(
         };
         if let Some(device) = patch.get_device(from_id) {
             let start = editor.socket_pos(device, true, from_port_idx, canvas_rect);
-            draw_bezier_connection(&painter, start, end_pos, Color32::from_rgb(255, 220, 100), editor.zoom, true);
+            // Use phosphor bright for pending connections
+            draw_bezier_connection(&painter, start, end_pos, theme().phosphor_bright, editor.zoom, true);
         }
     }
 
@@ -349,13 +385,14 @@ pub fn render_node_canvas(
         }
     }
 
-    // Zoom indicator
+    // Zoom indicator - use theme colors
+    let t = theme();
     painter.text(
         canvas_rect.min + Vec2::new(10.0, 10.0),
         egui::Align2::LEFT_TOP,
         format!("Zoom: {:.0}%", editor.zoom * 100.0),
         egui::FontId::proportional(12.0),
-        Color32::from_rgb(150, 150, 150),
+        t.text_secondary,
     );
 
     // Contextual hint
@@ -364,7 +401,7 @@ pub fn render_node_canvas(
     } else if let Some((_, is_output, _)) = editor.hovered_socket {
         if is_output { "Drag to connect" } else { "Drag to unplug" }
     } else if editor.hovered_node.is_some() {
-        "Drag to move \u{2022} Ctrl+click to connect \u{2022} Right-click to delete"
+        "Drag to move \u{2022} Ctrl+click to connect \u{2022} O to set output \u{2022} Del to delete"
     } else {
         "Middle-drag to pan \u{2022} Scroll to zoom \u{2022} Home to reset"
     };
@@ -373,16 +410,18 @@ pub fn render_node_canvas(
         egui::Align2::LEFT_TOP,
         hint,
         egui::FontId::proportional(11.0),
-        Color32::from_rgb(120, 120, 130),
+        t.phosphor_fade,
     );
 }
 
 // ─── Grid ─────────────────────────────────────────────────────
 
 fn draw_grid(painter: &egui::Painter, rect: Rect, pan: Vec2, zoom: f32) {
+    let t = theme();
     let grid_spacing = 50.0 * zoom;
-    let grid_color = Color32::from_rgb(40, 40, 45);
-    let major_grid_color = Color32::from_rgb(50, 50, 55);
+    // Use theme colors - subtle phosphor fade for grid
+    let grid_color = t.phosphor_fade.linear_multiply(0.15);
+    let major_grid_color = t.phosphor_fade.linear_multiply(0.25);
 
     let offset_x = pan.x % grid_spacing;
     let offset_y = pan.y % grid_spacing;
@@ -488,8 +527,19 @@ fn handle_canvas_input(
                 }
             }
 
-            // Check connection hover
+            // Check node hover FIRST (prioritize nodes over connections)
             if editor.hovered_socket.is_none() {
+                for device in &patch.devices {
+                    let rect = editor.node_rect(device, canvas_rect);
+                    if rect.contains(pos) {
+                        editor.hovered_node = Some(device.instance_id);
+                        break;
+                    }
+                }
+            }
+
+            // Check connection hover only if NOT over a node or socket
+            if editor.hovered_socket.is_none() && editor.hovered_node.is_none() {
                 for (idx, conn) in patch.connections.iter().enumerate() {
                     let from_dev = patch.get_device(conn.from_device);
                     let to_dev = patch.get_device(conn.to_device);
@@ -503,17 +553,6 @@ fn handle_canvas_input(
                             editor.hovered_connection = Some(idx);
                             break;
                         }
-                    }
-                }
-            }
-
-            // Check node hover
-            if editor.hovered_socket.is_none() && editor.hovered_connection.is_none() {
-                for device in &patch.devices {
-                    let rect = editor.node_rect(device, canvas_rect);
-                    if rect.contains(pos) {
-                        editor.hovered_node = Some(device.instance_id);
-                        break;
                     }
                 }
             }
@@ -546,6 +585,16 @@ fn handle_canvas_input(
                         center.x - canvas_rect.min.x - device.position.0 * editor.zoom,
                         center.y - canvas_rect.min.y - device.position.1 * editor.zoom,
                     );
+                }
+            }
+        }
+
+        // O key: Set selected node as output device
+        if ui.input(|i| i.key_pressed(egui::Key::O)) {
+            if let Some(node_id) = editor.selected_node {
+                if patch.get_device(node_id).is_some() {
+                    patch.output_device = node_id;
+                    editor.graph_modified = true;
                 }
             }
         }
@@ -780,6 +829,7 @@ fn draw_connections(
     patch: &DevicePatch,
     canvas_rect: Rect,
 ) {
+    let t = theme();
     for (idx, conn) in patch.connections.iter().enumerate() {
         let from_dev = patch.get_device(conn.from_device);
         let to_dev = patch.get_device(conn.to_device);
@@ -792,9 +842,9 @@ fn draw_connections(
             let is_hovered = editor.hovered_connection == Some(idx);
             let is_selected = editor.selected_connection == Some(idx);
             let color = if is_hovered {
-                Color32::from_rgb(255, 100, 100)
+                t.accent_error // Red for delete hint
             } else if is_selected {
-                Color32::WHITE
+                t.accent_selected // Yellow for selection
             } else {
                 cable_type_color(&conn.cable_type)
             };
@@ -811,9 +861,10 @@ fn draw_bezier_connection(
     zoom: f32,
     highlighted: bool,
 ) {
-    let control_offset = ((end.x - start.x).abs() * 0.5).max(50.0 * zoom);
-    let ctrl1 = Pos2::new(start.x + control_offset, start.y);
-    let ctrl2 = Pos2::new(end.x - control_offset, end.y);
+    // Vertical bezier: control points offset in Y direction for top-down flow
+    let control_offset = ((end.y - start.y).abs() * 0.5).max(50.0 * zoom);
+    let ctrl1 = Pos2::new(start.x, start.y + control_offset);
+    let ctrl2 = Pos2::new(end.x, end.y - control_offset);
 
     let segments = 20;
     let mut points = Vec::with_capacity(segments + 1);
@@ -846,59 +897,58 @@ fn draw_node(
     canvas_rect: Rect,
     patch: &DevicePatch,
 ) {
+    let t = theme();
     let rect = editor.node_rect(device, canvas_rect);
     let is_selected = editor.selected_node == Some(device.instance_id);
     let is_hovered = editor.hovered_node == Some(device.instance_id);
     let is_output = is_output_device(patch, device.instance_id);
 
-    let base_color = node_color(device.device.device_id());
-    let header_color = if is_hovered && !is_selected {
-        Color32::from_rgb(
-            (base_color.r() as u16 + 30).min(255) as u8,
-            (base_color.g() as u16 + 30).min(255) as u8,
-            (base_color.b() as u16 + 30).min(255) as u8,
-        )
-    } else {
-        base_color
-    };
-    let body_color = Color32::from_rgb(35, 35, 40);
+    let category_color = node_color(device.device.device_id());
 
-    // Node body
+    // Node body - dark bakelite background
+    let body_color = t.bg_panel;
     painter.rect_filled(rect, 4.0 * editor.zoom, body_color);
 
-    // Node header
-    let header_rect = Rect::from_min_max(
+    // Category color bar on TOP edge (3px)
+    let bar_height = 3.0 * editor.zoom;
+    let bar_rect = Rect::from_min_max(
         rect.min,
-        Pos2::new(rect.max.x, rect.min.y + 20.0 * editor.zoom),
+        Pos2::new(rect.max.x, rect.min.y + bar_height),
     );
-    painter.rect_filled(header_rect, 4.0 * editor.zoom, header_color);
+    painter.rect_filled(bar_rect, 2.0 * editor.zoom, category_color);
 
-    // Border
+    // Border with theme colors
     if is_selected {
-        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(2.0, Color32::WHITE));
-    } else if is_output {
-        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.5, Color32::from_rgb(255, 200, 80)));
+        // Yellow glow border for selection
+        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(2.5, t.accent_selected));
     } else if is_hovered {
-        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.5, Color32::from_rgb(150, 150, 160)));
+        // Phosphor glow on hover
+        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.5, t.phosphor_glow));
+    } else if is_output {
+        // Output device gets subtle highlight
+        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.5, t.accent_warning));
     } else {
-        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.0, Color32::from_rgb(60, 60, 65)));
+        painter.rect_stroke(rect, 4.0 * editor.zoom, Stroke::new(1.0, t.aluminum.linear_multiply(0.4)));
     }
 
-    // Title
-    let title = if is_output {
-        format!("{} [OUT]", device.device.device_name())
-    } else {
-        device.device.device_name().to_string()
-    };
+    // Title - centered, cream colored
+    let title = device.device.device_name().to_string();
     painter.text(
-        rect.min + Vec2::new(8.0 * editor.zoom, 4.0 * editor.zoom),
-        egui::Align2::LEFT_TOP,
+        Pos2::new(rect.center().x, rect.min.y + bar_height + 8.0 * editor.zoom),
+        egui::Align2::CENTER_TOP,
         &title,
         egui::FontId::proportional(11.0 * editor.zoom),
-        Color32::WHITE,
+        t.text_primary,
     );
 
-    // Input sockets with labels
+    // Output device LED indicator (red dot)
+    if is_output {
+        let led_pos = Pos2::new(rect.max.x - 10.0 * editor.zoom, rect.min.y + bar_height + 12.0 * editor.zoom);
+        painter.circle_filled(led_pos, 4.0 * editor.zoom, t.accent_error);
+        painter.circle_stroke(led_pos, 4.0 * editor.zoom, Stroke::new(1.0, Color32::BLACK));
+    }
+
+    // Input sockets (TOP edge) with labels ABOVE
     let inputs = device.device.inputs();
     for (i, inp) in inputs.iter().enumerate() {
         let sp = editor.socket_pos(device, false, i, canvas_rect);
@@ -907,51 +957,51 @@ fn draw_node(
             |c| c.to_device == device.instance_id && c.to_port == inp.name
         );
         let socket_color = if is_socket_hovered {
-            Color32::from_rgb(200, 200, 220)
+            t.phosphor_bright
         } else if has_connection {
-            Color32::from_rgb(100, 120, 140)
+            t.aluminum
         } else {
-            Color32::from_rgb(80, 80, 90)
+            t.aluminum.linear_multiply(0.6)
         };
         let radius = if is_socket_hovered { 7.0 * editor.zoom } else { 5.0 * editor.zoom };
         painter.circle_filled(sp, radius, socket_color);
-        painter.circle_stroke(sp, radius, Stroke::new(1.0, Color32::from_rgb(120, 120, 130)));
+        painter.circle_stroke(sp, radius, Stroke::new(1.0, t.aluminum));
 
-        // Port label
+        // Port label ABOVE the socket
         painter.text(
-            sp + Vec2::new(10.0 * editor.zoom, -5.0 * editor.zoom),
-            egui::Align2::LEFT_TOP,
+            sp + Vec2::new(0.0, -12.0 * editor.zoom),
+            egui::Align2::CENTER_BOTTOM,
             &inp.name,
-            egui::FontId::proportional(9.0 * editor.zoom),
-            Color32::from_rgb(160, 160, 170),
+            egui::FontId::proportional(8.0 * editor.zoom),
+            t.text_secondary,
         );
     }
 
-    // Output sockets with labels
+    // Output sockets (BOTTOM edge) with labels BELOW, category colored
     let outputs = device.device.outputs();
     for (i, out) in outputs.iter().enumerate() {
         let sp = editor.socket_pos(device, true, i, canvas_rect);
         let is_socket_hovered = editor.hovered_socket == Some((device.instance_id, true, i));
         let socket_color = if is_socket_hovered {
             Color32::from_rgb(
-                (base_color.r() as u16 + 60).min(255) as u8,
-                (base_color.g() as u16 + 60).min(255) as u8,
-                (base_color.b() as u16 + 60).min(255) as u8,
+                (category_color.r() as u16 + 60).min(255) as u8,
+                (category_color.g() as u16 + 60).min(255) as u8,
+                (category_color.b() as u16 + 60).min(255) as u8,
             )
         } else {
-            base_color
+            category_color
         };
         let radius = if is_socket_hovered { 7.0 * editor.zoom } else { 5.0 * editor.zoom };
         painter.circle_filled(sp, radius, socket_color);
-        painter.circle_stroke(sp, radius, Stroke::new(1.0, Color32::WHITE));
+        painter.circle_stroke(sp, radius, Stroke::new(1.0, t.text_primary));
 
-        // Port label
+        // Port label BELOW the socket
         painter.text(
-            sp + Vec2::new(-10.0 * editor.zoom, -5.0 * editor.zoom),
-            egui::Align2::RIGHT_TOP,
+            sp + Vec2::new(0.0, 10.0 * editor.zoom),
+            egui::Align2::CENTER_TOP,
             &out.name,
-            egui::FontId::proportional(9.0 * editor.zoom),
-            Color32::from_rgb(160, 160, 170),
+            egui::FontId::proportional(8.0 * editor.zoom),
+            t.text_secondary,
         );
     }
 }
@@ -959,6 +1009,7 @@ fn draw_node(
 // ─── Palette (left panel) ─────────────────────────────────────
 
 pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut DevicePatch) {
+    let t = theme();
     ui.heading("Devices");
     ui.separator();
 
@@ -967,9 +1018,33 @@ pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &m
             .default_open(category.name == "Generators")
             .show(ui, |ui| {
                 for entry in &category.devices {
-                    if ui.button(entry.display_name).clicked() {
+                    // Color based on validation status
+                    let (text_color, tooltip) = match entry.validation {
+                        device_registry::ValidationStatus::Validated => {
+                            (t.phosphor_glow, "Validated in workbench")
+                        }
+                        device_registry::ValidationStatus::NeedsValidation => {
+                            (t.accent_warning, "Needs workbench validation")
+                        }
+                        device_registry::ValidationStatus::Legacy => {
+                            (t.text_secondary, "Legacy device (validated)")
+                        }
+                        device_registry::ValidationStatus::Prototype => {
+                            (t.accent_info, "Prototype - artistic interpretation")
+                        }
+                    };
+
+                    let button_text = egui::RichText::new(entry.display_with_status())
+                        .color(text_color);
+
+                    if ui.button(button_text)
+                        .on_hover_text(tooltip)
+                        .clicked()
+                    {
                         if let Some(device) = device_registry::create_device(entry.device_id) {
-                            patch.add_device(device, 200.0, 200.0);
+                            // Find placement position: below existing nodes (top-down flow)
+                            let (new_x, new_y) = find_new_node_position(patch);
+                            patch.add_device(device, new_x, new_y);
                             editor.graph_modified = true;
                         }
                     }

@@ -1,20 +1,25 @@
 // ============================================
-// PAIK/ABE COLORIZER
+// WAVEFOLD COLORIZER (PROTOTYPE)
 // ============================================
 //
-// Authentic emulation of the colorizer section from the
-// Paik/Abe Video Synthesizer (1969-1970).
+// STATUS: ARTISTIC INTERPRETATION - NOT AUTHENTIC
+// See: research/prototypes/paik_abe_colorizer_v1/spec.json
 //
-// Circuit characteristics:
-// - Uses LM741 op-amps (0.5 V/µs slew rate)
-// - Triangle wave folding creates harmonics
-// - Each RGB channel has independent gain
-// - Saturation from op-amp rail limiting
+// This is a triangle wave folding colorizer inspired by Paik/Abe
+// aesthetics but NOT based on actual Paik/Abe schematics.
 //
-// The "Paik/Abe look" comes from:
-// 1. Slow slew rate softening transients
-// 2. Asymmetric folding from component tolerances
-// 3. Warm color shifts from thermal drift
+// AUTHENTICITY NOTE (2026-01-29):
+// Actual Paik/Abe uses CA3019 diode array for amplitude window
+// detection (PED Control, schematic page 28). This module uses
+// triangle wave folding which produces a different (but still
+// visually interesting) effect.
+//
+// For authentic Paik/Abe colorization, use: paik_abe_ped_colorizer
+//
+// Technical approach (NOT authentic):
+// - Triangle wave folding (similar to Serge/Buchla audio wavefolders)
+// - Per-channel gain creates color from luminance differences
+// - LM741-inspired saturation (LM741 not in actual Paik/Abe)
 //
 // Parameters (exposed via DeviceParameter):
 // - gain_r: Red channel folding gain (0.5-8.0, default 2.0)
@@ -22,7 +27,7 @@
 // - gain_b: Blue channel folding gain (0.5-8.0, default 3.0)
 // - fold_depth: Number of folding stages (1-5, default 2)
 // - saturation: Color saturation amount (0-2, default 1.0)
-// - slew: LM741 slew rate character (0-1, default 0.3)
+// - slew: Slew rate character (0-1, default 0.3)
 
 // Op-amp saturation with LM741 characteristics
 fn paik_abe_opamp_sat(v_in: f32, slew_factor: f32) -> f32 {

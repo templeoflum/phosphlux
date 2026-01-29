@@ -1,0 +1,55 @@
+{
+  "name": "Paik/Abe Folding Amplifier (Artistic Interpretation)",
+  "version": "1.0.0",
+  "type": "prototype",
+  "status": "working",
+  "created_date": "2026-01-29",
+  "classification_date": "2026-01-29",
+
+  "description": "Triangle wave folding amplifier inspired by audio synthesis wavefolders. NOT present in actual Paik/Abe schematics.",
+
+  "authenticity": {
+    "is_authentic": false,
+    "reason": "No 'folding amplifier' circuit exists in Paik/Abe schematics. The actual colorization is done by CA3019 amplitude window detection (PED Control, Page 28). The 'folding' terminology came from loose descriptions of nonlinear behavior.",
+    "schematic_basis": "None - creative interpretation based on audio synthesis concepts",
+    "notes": "Similar to Serge/Buchla wavefolders from audio synthesis. Produces interesting effects but via different mechanism than authentic Paik/Abe."
+  },
+
+  "technical": {
+    "approach": "Multi-stage triangle wave folding",
+    "transfer_function": "fold(x) = abs(fract(x * 0.5 + 0.25) * 2.0 - 1.0)",
+    "features": [
+      "Variable gain (1-8x)",
+      "Multi-stage depth (1-5 stages)",
+      "Bias/asymmetry control",
+      "Soft compression at fold peaks"
+    ]
+  },
+
+  "parameters": {
+    "gain": {"range": [1.0, 8.0], "default": 2.0, "description": "Fold amount - higher = more folds"},
+    "depth": {"range": [1.0, 5.0], "default": 2.0, "description": "Number of cascaded fold stages"},
+    "bias": {"range": [0.0, 1.0], "default": 0.5, "description": "DC offset for asymmetric folding"}
+  },
+
+  "artistic_value": {
+    "visual_character": "Creates luminance-dependent banding patterns similar to solarization",
+    "use_cases": [
+      "Video wavefolding effects",
+      "Luminance-to-pattern conversion",
+      "Pre-processing for colorizers"
+    ],
+    "note": "When used before PED Colorizer, creates more complex patterns"
+  },
+
+  "files": {
+    "shader": "src/devices/paik_abe/folding_amp.wgsl",
+    "device_struct": "src/devices/paik_abe/mod.rs"
+  },
+
+  "future": {
+    "keep_available": true,
+    "reason": "Useful creative tool, could become generic 'Video Wavefolder' module",
+    "potential_rename": "video_wavefolder"
+  }
+}
