@@ -473,7 +473,8 @@ fn handle_canvas_input(
                         let to_idx = port_name_to_index(to, false, &conn.to_port).unwrap_or(0);
                         let start = editor.socket_pos(from, true, from_idx, canvas_rect);
                         let end = editor.socket_pos(to, false, to_idx, canvas_rect);
-                        if editor.point_near_bezier(pos, start, end, 6.0 * editor.zoom) {
+                        // Increased threshold for easier selection
+                        if editor.point_near_bezier(pos, start, end, 10.0 * editor.zoom) {
                             editor.hovered_connection = Some(idx);
                             break;
                         }
@@ -596,6 +597,7 @@ fn handle_canvas_input(
             // Check connection selection
             if !started_interaction {
                 if let Some(conn_idx) = editor.hovered_connection {
+                    eprintln!("[DEBUG] Clicked on connection: idx={}", conn_idx);
                     editor.selected_connection = Some(conn_idx);
                     editor.selected_node = None;
                     started_interaction = true;
@@ -924,6 +926,7 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
 
     // Connection inspector (cable type selector)
     if let Some(conn_idx) = editor.selected_connection {
+        eprintln!("[DEBUG] Connection selected: idx={}", conn_idx);
         if conn_idx < patch.connections.len() {
             let conn = &patch.connections[conn_idx];
             let from_name = patch.get_device(conn.from_device)
@@ -933,6 +936,7 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                 .map(|d| d.device.device_name().to_string())
                 .unwrap_or_else(|| "?".to_string());
             let current_cable = conn.cable_type.clone();
+            eprintln!("[DEBUG] Showing connection: {} -> {}, cable={:?}", from_name, to_name, current_cable);
 
             ui.strong("Connection");
             ui.horizontal(|ui| {
@@ -963,8 +967,12 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
 
                     if ui.selectable_label(is_selected, name).clicked() {
                         if let Some(conn) = patch.connections.get_mut(conn_idx) {
+                            eprintln!("[CABLE] CHANGING cable type from {:?} to {:?}", conn.cable_type, cable);
                             conn.cable_type = cable.clone();
                             editor.graph_modified = true;
+                            eprintln!("[CABLE] graph_modified = true");
+                        } else {
+                            eprintln!("[CABLE] ERROR: get_mut returned None!");
                         }
                     }
                 });

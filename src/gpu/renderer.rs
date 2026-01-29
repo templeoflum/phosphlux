@@ -506,15 +506,9 @@ impl Renderer {
             Ok(plan) => {
                 self.build_segment_pipelines(&plan, patch);
                 self.shader_error = None;
-                log::info!(
-                    "Recompiled: {} segment(s), {} intermediate texture(s)",
-                    self.segment_pipelines.len(),
-                    self.intermediate_textures.len()
-                );
             }
             Err(e) => {
                 self.shader_error = Some(format!("{}", e));
-                log::error!("Shader compose error: {}", e);
             }
         }
     }

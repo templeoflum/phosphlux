@@ -48,9 +48,11 @@ const NTSC_CYCLES_PER_LINE: f32 = 227.5;    // Subcarrier cycles per line
 // Composite video bandwidth limits
 // I channel: 1.3 MHz (vestigial sideband) → normalized blur radius
 // Q channel: 0.4 MHz (double sideband) → wider blur
-const COMPOSITE_BLUR_I: f32 = 0.003;
-const COMPOSITE_BLUR_Q: f32 = 0.008;
-const COMPOSITE_DOT_CRAWL_AMP: f32 = 0.03;
+// Composite video degradation constants
+// Based on NTSC bandwidth limits: Y=4.2MHz, I=1.3MHz, Q=0.4MHz
+const COMPOSITE_BLUR_I: f32 = 0.003;   // I channel blur radius (normalized)
+const COMPOSITE_BLUR_Q: f32 = 0.008;   // Q channel blur radius (normalized)
+const COMPOSITE_DOT_CRAWL_AMP: f32 = 0.03;  // Dot crawl amplitude
 
 // S-Video: separate Y/C, no crosstalk
 // Chroma bandwidth: ~1.5 MHz (both channels)

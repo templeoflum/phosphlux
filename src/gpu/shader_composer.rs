@@ -691,13 +691,17 @@ impl ShaderComposer {
     /// Wrap a signal expression with cable degradation based on cable type.
     /// Returns the wrapped WGSL expression.
     fn apply_cable_degradation(signal: &str, cable_type: &CableType) -> String {
-        match cable_type {
+        let result = match cable_type {
             CableType::Ideal => signal.to_string(),
             CableType::Composite => format!("composite_degrade({}, uv, time)", signal),
             CableType::SVideo => format!("svideo_degrade({}, uv, time)", signal),
             CableType::Component => format!("component_degrade({}, uv, 6.0)", signal), // 6ft default
             CableType::Rgb => format!("rgb_degrade({}, uv, 6.0)", signal),             // 6ft default
+        };
+        if *cable_type != CableType::Ideal {
+            eprintln!("[SHADER] Cable degradation applied: {:?} -> {}", cable_type, result);
         }
+        result
     }
 
     /// Generate the main function for a composed (pixel processor) segment.
