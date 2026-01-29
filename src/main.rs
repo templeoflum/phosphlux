@@ -31,6 +31,7 @@ use crate::gpu::{DevicePatch, ShaderComposer};
 use crate::ui::node_editor::{
     render_inspector, render_node_canvas, render_node_palette, AspectRatio, NodeEditor,
 };
+use crate::ui::theme::apply_theme;
 
 struct App {
     window: Option<Arc<Window>>,
@@ -67,19 +68,20 @@ impl App {
         }
     }
 
-    /// Create the default patch: TestSignal -> PaikAbeColorizer
+    /// Create the default patch: TestSignal -> PaikAbeColorizer (top-down flow)
     fn default_patch() -> DevicePatch {
         let mut patch = DevicePatch::new();
 
+        // Top-down layout: signal generator at top, colorizer below
         let signal_id = patch.add_device(
             Box::new(devices::TestSignalGenerator::new()),
-            50.0,
             100.0,
+            50.0,
         );
         let colorizer_id = patch.add_device(
             Box::new(devices::PaikAbeColorizer::new()),
-            250.0,
             100.0,
+            180.0,
         );
 
         patch.connect(signal_id, "video_out", colorizer_id, "video_in");
@@ -121,6 +123,9 @@ impl ApplicationHandler for App {
 
             // Register output texture with egui
             renderer.register_output_texture(&mut egui_renderer);
+
+            // Apply vintage oscilloscope theme
+            apply_theme(&self.egui_ctx);
 
             // Initial compile of the patch
             renderer.recompile(&self.patch, &mut self.composer);

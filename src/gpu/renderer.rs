@@ -69,9 +69,13 @@ struct SegmentPipeline {
     pipeline: wgpu::RenderPipeline,
     params_buffer: wgpu::Buffer,
     params_bind_group: wgpu::BindGroup,
-    /// Group 1 bind group: empty (no input texture) or texture+sampler
+    /// Group 1 bind group: empty (no input texture) or texture(s)+sampler(s)
     input_bind_group: wgpu::BindGroup,
     param_layout: ParamLayout,
+    /// Number of input textures this segment reads
+    input_texture_count: u32,
+    /// Maps texture slot index to intermediate texture index (for resize rebuild)
+    input_source_segments: Vec<usize>,
 }
 
 // ─── Renderer ────────────────────────────────────────────────
@@ -96,6 +100,10 @@ pub struct Renderer {
     empty_bg_layout: wgpu::BindGroupLayout,
     texture_input_bg_layout: wgpu::BindGroupLayout,
     params_bg_layout: wgpu::BindGroupLayout,
+
+    // Multi-input bind group layouts (0-8 textures)
+    // Index 0 = empty, index N = N textures with samplers
+    multi_input_bg_layouts: [wgpu::BindGroupLayout; 9],
 
     // Global bind groups + buffers
     timing_bind_group: wgpu::BindGroup,
@@ -243,6 +251,12 @@ impl Renderer {
                 }],
             });
 
+        // Multi-input bind group layouts (0-8 textures)
+        // Pre-created at init to avoid runtime allocation
+        let multi_input_bg_layouts: [wgpu::BindGroupLayout; 9] = std::array::from_fn(|n| {
+            Self::create_multi_input_bg_layout(&device, n as u32)
+        });
+
         // === Buffers ===
         let timing_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Timing Buffer"),
@@ -374,6 +388,7 @@ impl Renderer {
             empty_bg_layout,
             texture_input_bg_layout,
             params_bg_layout,
+            multi_input_bg_layouts,
             timing_bind_group,
             timing_buffer,
             empty_bind_group,
@@ -497,6 +512,36 @@ impl Renderer {
         (texture, view)
     }
 
+    /// Create a bind group layout for multi-input segments.
+    /// Supports 0-8 input textures (each with its own sampler).
+    fn create_multi_input_bg_layout(device: &wgpu::Device, count: u32) -> wgpu::BindGroupLayout {
+        let mut entries = Vec::with_capacity((count * 2) as usize);
+        for i in 0..count {
+            // Texture binding at even index
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: i * 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            });
+            // Sampler binding at odd index
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: i * 2 + 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            });
+        }
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(&format!("Multi-Input BG Layout ({})", count)),
+            entries: &entries,
+        })
+    }
+
     // ─── Recompile ───────────────────────────────────────────
 
     /// Recompile the pipeline from a device patch.
@@ -543,11 +588,16 @@ impl Renderer {
 
         // Build a pipeline for each segment
         for (i, segment) in plan.segments.iter().enumerate() {
-            // Choose group 1 layout based on whether this segment needs input texture
-            let group1_layout = if segment.needs_input_texture {
-                &self.texture_input_bg_layout
+            let input_count = segment.input_texture_count as usize;
+
+            // Choose group 1 layout based on input texture count
+            // Use multi-input layouts for proper binding count
+            let group1_layout = if input_count == 0 {
+                &self.multi_input_bg_layouts[0] // Empty layout
             } else {
-                &self.empty_bg_layout
+                // Clamp to max supported (8 textures)
+                let layout_idx = input_count.min(8);
+                &self.multi_input_bg_layouts[layout_idx]
             };
 
             // Create pipeline
@@ -580,52 +630,12 @@ impl Renderer {
                 }],
             });
 
-            // Create input bind group
-            let input_bind_group = if segment.needs_input_texture {
-                if i > 0 {
-                    // Bind previous segment's output texture
-                    let prev_view = &self.intermediate_textures[i - 1].1;
-                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some(&format!("Segment {} Input BG", i)),
-                        layout: &self.texture_input_bg_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(prev_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&self.sampler),
-                            },
-                        ],
-                    })
-                } else {
-                    // First segment but needs input: use black texture
-                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Segment 0 Black Input BG"),
-                        layout: &self.texture_input_bg_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(
-                                    &self.black_texture_view,
-                                ),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&self.sampler),
-                            },
-                        ],
-                    })
-                }
-            } else {
-                // No input texture: use empty bind group
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("Segment {} Empty Input BG", i)),
-                    layout: &self.empty_bg_layout,
-                    entries: &[],
-                })
-            };
+            // Create input bind group using multi-input helper
+            let input_bind_group = self.create_segment_input_bind_group(
+                segment,
+                i,
+                group1_layout,
+            );
 
             self.segment_pipelines.push(SegmentPipeline {
                 pipeline,
@@ -633,8 +643,72 @@ impl Renderer {
                 params_bind_group,
                 input_bind_group,
                 param_layout: segment.param_layout.clone(),
+                input_texture_count: segment.input_texture_count,
+                input_source_segments: segment.input_source_segments.clone(),
             });
         }
+    }
+
+    /// Create a bind group for segment input textures.
+    /// Supports multi-input segments by binding textures from input_source_segments.
+    fn create_segment_input_bind_group(
+        &self,
+        segment: &crate::gpu::shader_composer::SegmentShader,
+        segment_idx: usize,
+        layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::BindGroup {
+        let input_count = segment.input_texture_count as usize;
+
+        if input_count == 0 {
+            // No input textures: use empty bind group
+            return self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&format!("Segment {} Empty Input BG", segment_idx)),
+                layout,
+                entries: &[],
+            });
+        }
+
+        // Build entries for each input texture
+        let mut entries = Vec::with_capacity(input_count * 2);
+
+        for (tex_slot, &intermediate_idx) in segment.input_source_segments.iter().enumerate() {
+            // Get the texture view for this input
+            let tex_view = if intermediate_idx < self.intermediate_textures.len() {
+                &self.intermediate_textures[intermediate_idx].1
+            } else {
+                // Fallback to black texture if index is out of bounds
+                &self.black_texture_view
+            };
+
+            // Texture binding at even index
+            entries.push(wgpu::BindGroupEntry {
+                binding: (tex_slot * 2) as u32,
+                resource: wgpu::BindingResource::TextureView(tex_view),
+            });
+            // Sampler binding at odd index
+            entries.push(wgpu::BindGroupEntry {
+                binding: (tex_slot * 2 + 1) as u32,
+                resource: wgpu::BindingResource::Sampler(&self.sampler),
+            });
+        }
+
+        // If we have fewer source segments than input_count, fill remaining with black
+        for tex_slot in segment.input_source_segments.len()..input_count {
+            entries.push(wgpu::BindGroupEntry {
+                binding: (tex_slot * 2) as u32,
+                resource: wgpu::BindingResource::TextureView(&self.black_texture_view),
+            });
+            entries.push(wgpu::BindGroupEntry {
+                binding: (tex_slot * 2 + 1) as u32,
+                resource: wgpu::BindingResource::Sampler(&self.sampler),
+            });
+        }
+
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("Segment {} Multi-Input BG ({})", segment_idx, input_count)),
+            layout,
+            entries: &entries,
+        })
     }
 
     // ─── Parameter Updates ───────────────────────────────────
@@ -792,29 +866,58 @@ impl Renderer {
         }
 
         // Rebuild input bind groups for segments that reference intermediate textures
+        // Use stored input_source_segments for multi-input support
         for i in 0..self.segment_pipelines.len() {
-            if i > 0 && i - 1 < self.intermediate_textures.len() {
-                // Check if this segment needs input texture by looking at bind group layout
-                // We reconstruct the bind group with the new texture view
-                let prev_view = &self.intermediate_textures[i - 1].1;
-                // Only rebuild if this segment had a texture input
-                // We can check by trying to create with texture layout
-                let new_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("Segment {} Input BG (resized)", i)),
-                    layout: &self.texture_input_bg_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(prev_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&self.sampler),
-                        },
-                    ],
-                });
-                self.segment_pipelines[i].input_bind_group = new_bg;
+            let segment = &self.segment_pipelines[i];
+            let input_count = segment.input_texture_count as usize;
+
+            if input_count == 0 {
+                continue; // No input textures to rebuild
             }
+
+            // Get the correct layout for this input count
+            let layout_idx = input_count.min(8);
+            let layout = &self.multi_input_bg_layouts[layout_idx];
+
+            // Build entries for each input texture using stored source segments
+            let mut entries = Vec::with_capacity(input_count * 2);
+            let source_segments = &segment.input_source_segments;
+
+            for (tex_slot, &intermediate_idx) in source_segments.iter().enumerate() {
+                let tex_view = if intermediate_idx < self.intermediate_textures.len() {
+                    &self.intermediate_textures[intermediate_idx].1
+                } else {
+                    &self.black_texture_view
+                };
+
+                entries.push(wgpu::BindGroupEntry {
+                    binding: (tex_slot * 2) as u32,
+                    resource: wgpu::BindingResource::TextureView(tex_view),
+                });
+                entries.push(wgpu::BindGroupEntry {
+                    binding: (tex_slot * 2 + 1) as u32,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                });
+            }
+
+            // Fill remaining slots with black texture
+            for tex_slot in source_segments.len()..input_count {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: (tex_slot * 2) as u32,
+                    resource: wgpu::BindingResource::TextureView(&self.black_texture_view),
+                });
+                entries.push(wgpu::BindGroupEntry {
+                    binding: (tex_slot * 2 + 1) as u32,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                });
+            }
+
+            let new_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&format!("Segment {} Input BG (resized)", i)),
+                layout,
+                entries: &entries,
+            });
+            self.segment_pipelines[i].input_bind_group = new_bg;
         }
     }
 

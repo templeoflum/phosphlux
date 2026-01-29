@@ -114,7 +114,17 @@ Transformed the UI with a cohesive vintage oscilloscope aesthetic:
 - [x] Grid colors match theme
 - [x] Phosphor glow on hover states
 
-### v0.16 — Patch Save/Load + Default Presets
+### v0.16 — Multi-Input Texture Support ✓
+
+Enabled devices to receive inputs from multiple upstream segments:
+
+- [x] Pre-created bind group layouts (0-8 textures) at init
+- [x] `input_source_segments: Vec<usize>` in SegmentShader
+- [x] `device_to_segment` mapping for non-adjacent inputs
+- [x] `create_segment_input_bind_group()` helper
+- [x] Proper bind group rebuild on resize
+
+### v0.17 — Patch Save/Load + Default Presets
 
 - [ ] JSON patch file format
 - [ ] Save current patch (File menu)
@@ -122,7 +132,7 @@ Transformed the UI with a cohesive vintage oscilloscope aesthetic:
 - [ ] Default Paik/Abe preset patch
 - [ ] Recent files list
 
-### v0.17 — CRT Monitor ("Phosphors Glow")
+### v0.18 — CRT Monitor ("Phosphors Glow")
 
 A `DisplayOutput` device with its own render pass and feedback pair for temporal persistence:
 
@@ -133,7 +143,7 @@ A `DisplayOutput` device with its own render pass and feedback pair for temporal
 - [ ] Shadow mask type (none/shadow mask/aperture grille) and strength
 - [ ] Ping-pong feedback pair for persistence across frames
 
-### v0.18 — Camcorder + Feedback ("The Loop Closes")
+### v0.19 — Camcorder + Feedback ("The Loop Closes")
 
 An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 
@@ -144,7 +154,7 @@ An `OpticalInput` device that reads the CRT's screen texture (previous frame):
 - [ ] Optical connection type (dashed line, lens icon in UI)
 - [ ] CRT → Camera → Signal Chain → CRT feedback loop
 
-### v0.19 — Additional Devices + Polish
+### v0.20 — Additional Devices + Polish
 
 - [ ] Rutt/Etra displacement (ScanModulator)
 - [ ] Sandin Image Processor devices (amplitude classifier, four-quadrant multiplier)

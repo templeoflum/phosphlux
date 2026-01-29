@@ -363,6 +363,10 @@ pub struct SegmentShader {
     pub input_texture_count: u32,
     /// Instance IDs of devices in this segment (for param collection)
     pub device_instance_ids: Vec<u32>,
+    /// Maps texture slot index to intermediate texture index.
+    /// e.g., [0, 2] means slot 0 reads intermediate[0], slot 1 reads intermediate[2].
+    /// Used by renderer to create bind groups for multi-input segments.
+    pub input_source_segments: Vec<usize>,
 }
 
 /// The kind of render segment
@@ -490,6 +494,10 @@ impl ShaderComposer {
         let mut all_prev_device_ids: HashSet<u32> = HashSet::new();
         let mut segment_count = 0usize;
 
+        // Build device-to-segment mapping: tracks which segment produces each device's output.
+        // This allows multi-input segments to reference non-adjacent upstream segments.
+        let mut device_to_segment: HashMap<u32, usize> = HashMap::new();
+
         for &device_idx in &sorted {
             let device = &patch.devices[device_idx];
             let mode = device.device.processing_mode();
@@ -506,9 +514,13 @@ impl ShaderComposer {
                             &current_group,
                             segment_count > 0, // needs input texture if not first segment
                             &all_prev_device_ids,
+                            &device_to_segment,
                         )?;
+                        // Record which segment produces each device in this group
                         for &idx in &current_group {
-                            all_prev_device_ids.insert(patch.devices[idx].instance_id);
+                            let dev_id = patch.devices[idx].instance_id;
+                            all_prev_device_ids.insert(dev_id);
+                            device_to_segment.insert(dev_id, segment_count);
                         }
                         segments.push(segment);
                         current_group.clear();
@@ -516,8 +528,13 @@ impl ShaderComposer {
                     }
 
                     // Create scan modulator segment
-                    let segment = self.build_scan_modulator_segment(patch, device_idx)?;
+                    let segment = self.build_scan_modulator_segment(
+                        patch,
+                        device_idx,
+                        &device_to_segment,
+                    )?;
                     all_prev_device_ids.insert(device.instance_id);
+                    device_to_segment.insert(device.instance_id, segment_count);
                     segments.push(segment);
                     segment_count += 1;
                 }
@@ -531,6 +548,7 @@ impl ShaderComposer {
                 &current_group,
                 segment_count > 0,
                 &all_prev_device_ids,
+                &device_to_segment,
             )?;
             segments.push(segment);
         }
@@ -556,6 +574,7 @@ impl ShaderComposer {
         device_indices: &[usize],
         needs_input_texture: bool,
         prev_device_ids: &HashSet<u32>,
+        device_to_segment: &HashMap<u32, usize>,
     ) -> Result<SegmentShader, ComposeError> {
         let mut wgsl = String::new();
 
@@ -582,6 +601,13 @@ impl ShaderComposer {
         } else {
             0
         };
+
+        // Compute input_source_segments: maps texture slot index to intermediate texture index
+        // This allows renderer to bind the correct textures for multi-input segments
+        let input_source_segments: Vec<usize> = cross_segment_sources
+            .iter()
+            .filter_map(|&device_id| device_to_segment.get(&device_id).copied())
+            .collect();
 
         if needs_input_texture {
             wgsl.push_str("// === SEGMENT INPUTS ===\n");
@@ -663,6 +689,7 @@ impl ShaderComposer {
             needs_input_texture,
             input_texture_count,
             device_instance_ids,
+            input_source_segments,
         })
     }
 
@@ -697,9 +724,29 @@ impl ShaderComposer {
         &self,
         patch: &DevicePatch,
         device_idx: usize,
+        device_to_segment: &HashMap<u32, usize>,
     ) -> Result<SegmentShader, ComposeError> {
         let device = &patch.devices[device_idx];
         let mut wgsl = String::new();
+
+        // Find the source segment for this scan modulator's input
+        // Scan modulators read from a single upstream device (first connected input)
+        let mut input_source_segments = Vec::new();
+        for input in device.device.inputs() {
+            for conn in &patch.connections {
+                if conn.to_device == device.instance_id && conn.to_port == input.name {
+                    if let Some(&seg_idx) = device_to_segment.get(&conn.from_device) {
+                        if !input_source_segments.contains(&seg_idx) {
+                            input_source_segments.push(seg_idx);
+                        }
+                    }
+                    break; // Only first input for now
+                }
+            }
+            if !input_source_segments.is_empty() {
+                break; // Scan modulators currently support single input
+            }
+        }
 
         // 1. Common + components + cables
         wgsl.push_str("// === COMMON ===\n");
@@ -766,6 +813,7 @@ impl ShaderComposer {
             needs_input_texture: true,
             input_texture_count: 1, // Scan modulators currently support single input
             device_instance_ids: vec![device.instance_id],
+            input_source_segments,
         })
     }
 

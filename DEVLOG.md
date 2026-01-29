@@ -1086,6 +1086,7 @@ Multiple instances of `PaikAbeColorizer` share one `device_paik_abe_colorizer_pr
 - **v0.14.1**: Authentic CA3019 model — exponential diode characteristic, clipping parameter, workbench naga validation
 - **v0.15.1**: Ollama removal — stripped from both workbench and research-orchestrator, Claude handles all research/generation directly
 - **v0.15**: UI Overhaul — vintage oscilloscope theme (PhosphluxTheme), top-down node flow, category color bars, phosphor accents
+- **v0.16**: Multi-input texture support — pre-created bind group layouts (0-8 textures), input_source_segments tracking, non-adjacent segment inputs
 
 ---
 
@@ -1510,6 +1511,62 @@ Created `PhosphluxTheme` struct with complete color palette:
 | `src/ui/mod.rs` | Added `pub mod theme;` |
 | `src/ui/node_editor.rs` | Top-down socket_pos, vertical beziers, themed draw_node |
 | `src/main.rs` | Applied theme on startup |
+
+---
+
+## v0.16 — Multi-Input Texture Support ("The Full Matrix")
+
+### Overview
+
+Enabled devices to receive inputs from multiple upstream segments, supporting the authentic 7-input Paik/Abe matrix mixer.
+
+### Problem
+
+The renderer had a fixed `texture_input_bg_layout` with only 2 bindings (1 texture + 1 sampler). Each segment could only read from the immediately preceding segment's output (`intermediate_textures[i-1]`). This prevented devices like the Paik/Abe matrix mixer from receiving inputs from non-adjacent upstream segments.
+
+### Solution: Pre-Created Multi-Input Bind Group Layouts
+
+**Shader Composer Changes:**
+
+Added `input_source_segments: Vec<usize>` to `SegmentShader` — maps texture slot index to intermediate texture index. For example, `[0, 2]` means slot 0 reads `intermediate[0]`, slot 1 reads `intermediate[2]`.
+
+During `compose_plan()`, build a `device_to_segment: HashMap<u32, usize>` tracking which segment produces each device's output. Pass this to segment builders so they can compute correct `input_source_segments`.
+
+**Renderer Changes:**
+
+Pre-create 9 bind group layouts at init (0-8 textures):
+```rust
+multi_input_bg_layouts: [wgpu::BindGroupLayout; 9] = std::array::from_fn(|n| {
+    Self::create_multi_input_bg_layout(&device, n as u32)
+});
+```
+
+Each layout has entries for N textures + N samplers at bindings 0,1,2,3,...
+
+`SegmentPipeline` now stores:
+- `input_texture_count: u32` — how many textures this segment reads
+- `input_source_segments: Vec<usize>` — which intermediate textures to bind
+
+`create_segment_input_bind_group()` builds bind groups by iterating `input_source_segments`, binding the correct intermediate textures (or black texture as fallback).
+
+`recreate_intermediate_textures()` correctly rebuilds multi-input bind groups on resize using stored `input_source_segments`.
+
+### Design Decisions
+
+1. **Pre-create layouts, not on-demand** — Zero runtime allocation for 60fps target
+2. **Maximum 8 inputs** — Covers the 7-input Paik/Abe matrix plus headroom
+3. **Black texture fallback** — Missing inputs render as black, not crash
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/gpu/shader_composer.rs` | Added `input_source_segments` to SegmentShader, `device_to_segment` mapping |
+| `src/gpu/renderer.rs` | Multi-input layouts array, `create_multi_input_bg_layout()`, `create_segment_input_bind_group()` |
+
+### After This
+
+With multi-input runtime support complete, the authentic 7-input matrix mixer device can be implemented — 7 virtual input channels that derive from actual upstream segments when connected.
 
 ---
 
