@@ -154,6 +154,25 @@ pub enum SignalType {
     Cv,
 }
 
+// ─── Cable Types ─────────────────────────────────────────────
+
+/// Cable/connector type affecting signal quality
+/// Different cables introduce distinct artifacts based on their physical properties
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum CableType {
+    /// No degradation (direct digital connection)
+    #[default]
+    Ideal,
+    /// Composite video (single RCA): chroma/luma crosstalk, ~4MHz bandwidth, dot crawl
+    Composite,
+    /// S-Video (separate Y/C): no crosstalk, bandwidth-limited per channel
+    SVideo,
+    /// Component (YPbPr): wider bandwidth, minimal degradation, HF rolloff on long cables
+    Component,
+    /// RGB (direct color): best quality, cable-length dependent HF rolloff
+    Rgb,
+}
+
 // ─── Connection ──────────────────────────────────────────────
 
 /// A connection between device ports
@@ -167,6 +186,8 @@ pub struct Connection {
     pub to_device: u32,
     /// Destination port name
     pub to_port: String,
+    /// Cable type (affects signal degradation)
+    pub cable_type: CableType,
 }
 
 // ─── Device Instance / Patch ─────────────────────────────────
@@ -242,6 +263,7 @@ impl DevicePatch {
             from_port: from_port.to_string(),
             to_device: to_id,
             to_port: to_port.to_string(),
+            cable_type: CableType::default(),
         });
     }
 

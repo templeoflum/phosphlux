@@ -415,6 +415,10 @@ Specification → Implementation → Verification → Documentation → Release
 ### 6.2 Implementation Phase
 
 - Write code to satisfy gates
+- **For shader code:** Follow Workbench Development Workflow (Section 8)
+  - Load shader into workbench
+  - Inject test signal
+  - Verify visual output before marking gate as pass
 - Run individual gate checks as features complete
 - Update state file incrementally
 - Keep DEVLOG current with decisions
@@ -442,28 +446,177 @@ Specification → Implementation → Verification → Documentation → Release
 
 ---
 
-## 7. Gate Design Principles
+## 7. Two-Tier Verification System
 
-### 7.1 Gates Must Be Mechanical
+Phosphlux requires both code existence AND visual correctness verification. A shader function that exists but produces wrong output is not complete.
 
-Good gate: `grep 'enum CableType' src/gpu/shader_composer.rs`
-Bad gate: "Cable types are implemented" (requires interpretation)
+### 7.1 Tier 1: Machine Gates (Automated)
 
-### 7.2 Gates Cover Existence, Not Quality
+Machine gates verify code existence. They are:
+- **Context-immune** — survive session restarts
+- **Deterministic** — same input always produces same result
+- **Fast** — run in milliseconds
 
-Gates verify that code exists and builds. They do not verify that code is correct or well-designed. Quality is the human audit function.
+Examples:
+- `grep 'enum CableType' src/` → code exists
+- `cargo build --release` → code compiles
+- `dir src/shaders/cables.wgsl` → file exists
 
-### 7.3 Gates Are Defined Before Implementation
+### 7.2 Tier 2: Visual Inspection Gates (Workbench)
 
-Write the gates when specifying the version, not after implementing it. This prevents post-hoc adjustment of success criteria.
+Visual gates verify shader output correctness. They require:
+- Loading shader into device workbench
+- Injecting appropriate test signal
+- Capturing screenshot
+- AI vision analysis OR human inspection
+- Recording verification in state file
 
-### 7.4 Gates Accumulate
+Visual gates have additional fields:
+```json
+{
+  "composite_visual_verified": {
+    "type": "inspection",
+    "description": "Composite degradation shows visible chroma blur, dot crawl on colorbars",
+    "test_signal": "colorbars",
+    "expected": "Chroma bleeding on color transitions, dot crawl pattern visible",
+    "screenshot": "output/v0.13_composite_colorbars.png",
+    "status": "pending",
+    "verified_by": null,
+    "verified_at": null
+  }
+}
+```
+
+### 7.3 Gate Type Summary
+
+| Type | Checks | Method | Survives Context Loss |
+|------|--------|--------|----------------------|
+| Machine | Code exists | grep/file check | Yes (automated) |
+| Build | Code compiles | cargo build | Yes (automated) |
+| Inspection | Output correct | Workbench + vision | Yes (recorded in state) |
+
+### 7.4 Gates Must Be Defined Before Implementation
+
+Write gates when specifying the version, not after implementing it. This prevents post-hoc adjustment of success criteria.
+
+### 7.5 Gates Accumulate
 
 Gates for v0.12 remain checked even when working on v0.13. Regression = gate that previously passed now fails.
 
 ---
 
-## 8. Human Responsibilities
+## 8. Workbench Development Workflow
+
+**For all shader/visual code, the development cycle is:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. WRITE CODE                                              │
+│     Write shader function in .wgsl file                     │
+├─────────────────────────────────────────────────────────────┤
+│  2. LOAD INTO WORKBENCH                                     │
+│     mcp__workbench__workbench_load_shader                   │
+├─────────────────────────────────────────────────────────────┤
+│  3. INJECT TEST SIGNAL                                      │
+│     mcp__workbench__workbench_inject_signal                 │
+│     - colorbars: for color processing                       │
+│     - ramp_h/ramp_v: for spatial effects                    │
+│     - gray50: for gain/level effects                        │
+├─────────────────────────────────────────────────────────────┤
+│  4. CAPTURE & ANALYZE                                       │
+│     mcp__workbench__workbench_screenshot                    │
+│     mcp__workbench__workbench_analyze                       │
+├─────────────────────────────────────────────────────────────┤
+│  5. COMPARE TO EXPECTED                                     │
+│     Does output show expected visual characteristics?       │
+│     - If NO: iterate on code, return to step 1              │
+│     - If YES: proceed to step 6                             │
+├─────────────────────────────────────────────────────────────┤
+│  6. RECORD VERIFICATION                                     │
+│     Update state file with:                                 │
+│     - screenshot path                                       │
+│     - verification timestamp                                │
+│     - verified_by (AI vision / human)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 8.1 Test Signal Selection
+
+| Effect Type | Recommended Test Signal | What to Look For |
+|-------------|------------------------|------------------|
+| Color processing | colorbars | Color shifts, saturation changes |
+| Chroma bandwidth | colorbars | Bleeding on sharp color transitions |
+| Spatial displacement | ramp_h, ramp_v | Visible warping/displacement |
+| Scan effects | checker | Line-level artifacts |
+| Gain/contrast | gray50 | Level shifts, clipping |
+| Overall quality | sweep | Frequency response |
+
+### 8.2 Workbench MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `workbench_load_shader` | Hot-reload WGSL into workbench |
+| `workbench_set_params` | Adjust shader uniforms |
+| `workbench_inject_signal` | Load test pattern |
+| `workbench_screenshot` | Capture current output |
+| `workbench_analyze` | AI vision analysis of output |
+| `workbench_compare_visual` | Compare output vs reference |
+| `workbench_record_sweep` | Create parameter sweep GIF |
+| `workbench_doc_capture` | Screenshot with metadata for docs |
+
+### 8.3 When Workbench Verification is Required
+
+**Always required for:**
+- New shader functions (cables, effects, devices)
+- Changes to existing shader logic
+- Parameter range adjustments that affect visual output
+
+**Not required for:**
+- Rust code changes (UI, data structures)
+- Non-visual features (save/load, MIDI)
+- Documentation updates
+
+---
+
+## 9. Gate Design Principles
+
+### 9.1 Every Shader Function Needs Two Gates
+
+```json
+{
+  "composite_code_exists": {
+    "type": "machine",
+    "check": "grep 'fn composite_degrade' src/shaders/cables.wgsl",
+    "status": "pending"
+  },
+  "composite_visual_verified": {
+    "type": "inspection",
+    "test_signal": "colorbars",
+    "expected": "Visible chroma blur, dot crawl artifacts",
+    "status": "pending"
+  }
+}
+```
+
+### 9.2 Inspection Gates Record Evidence
+
+When a visual inspection passes, record:
+- `screenshot`: path to captured image
+- `verified_by`: "ai_vision" or "human"
+- `verified_at`: ISO timestamp
+- `notes`: any observations
+
+### 9.3 Stubs Do Not Pass Visual Gates
+
+A stub function like `fn svideo_degrade() { return color; }` will:
+- PASS the machine gate (function exists)
+- FAIL the visual gate (no visible degradation effect)
+
+This is the correct behavior — machine gates verify existence, visual gates verify correctness.
+
+---
+
+## 10. Human Responsibilities
 
 The human audit function cannot be automated:
 
@@ -476,7 +629,7 @@ The human audit function cannot be automated:
 
 ---
 
-## 9. AI Responsibilities
+## 11. AI Responsibilities
 
 The AI handles execution within the framework:
 
@@ -494,7 +647,7 @@ The AI handles execution within the framework:
 
 ---
 
-## 10. Recovery After Context Loss
+## 12. Recovery After Context Loss
 
 When a session starts after compaction:
 
@@ -509,7 +662,7 @@ The state file is the source of truth, not the conversation history.
 
 ---
 
-## 11. Bootstrapping
+## 13. Bootstrapping
 
 To initialize this protocol for Phosphlux:
 

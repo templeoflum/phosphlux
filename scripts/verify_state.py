@@ -171,9 +171,36 @@ def verify_version(version: str, version_data: Dict[str, Any], project_root: Pat
     gates = version_data.get('gates', {})
 
     for gate_name, gate_data in gates.items():
+        gate_type = gate_data.get('type', 'machine')  # default to machine gate
         check_cmd = gate_data.get('check', '')
         claimed_status = gate_data.get('status', 'pending')
         description = gate_data.get('description', '')
+
+        # Handle inspection gates (visual verification)
+        if gate_type == 'inspection':
+            verified_by = gate_data.get('verified_by')
+            screenshot = gate_data.get('screenshot')
+
+            # Inspection gate passes only if it has been verified
+            if claimed_status == 'pass' and verified_by and screenshot:
+                status_str = color('VERIFIED', Colors.GREEN)
+                passed += 1
+            elif claimed_status == 'pass' and (not verified_by or not screenshot):
+                # Claims pass but no evidence
+                status_str = color('NO EVIDENCE', Colors.RED)
+                mismatched += 1
+                failed += 1
+                print(f"  [{status_str:^18}] {gate_name}")
+                print(f"             {color('^ Claims PASS but missing verification evidence', Colors.RED)}")
+                print(f"             Need: workbench screenshot + verified_by")
+                updated_gates[gate_name] = gate_data.copy()
+                continue
+            else:
+                status_str = color('NEEDS VISUAL', Colors.YELLOW)
+
+            print(f"  [{status_str:^18}] {gate_name}")
+            updated_gates[gate_name] = gate_data.copy()
+            continue
 
         # Skip build checks if requested
         if skip_build and 'cargo build' in check_cmd:
