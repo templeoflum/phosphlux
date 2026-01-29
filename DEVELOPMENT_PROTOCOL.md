@@ -397,12 +397,54 @@ if __name__ == "__main__":
 ## 6. Version Lifecycle
 
 ```
-Specification → Implementation → Verification → Documentation → Release
-     │               │                │               │            │
-     │               │                │               │            │
-     v               v                v               v            v
-  spec.md        code exists      gates pass      docs updated   version++
-  in DEVLOG      tests pass       state updated   DEVLOG done    tag commit
+Research → Specification → Implementation → Verification → Documentation → Release
+    │            │               │                │               │            │
+    │            │               │                │               │            │
+    v            v               v                v               v            v
+ sources     spec.md        code exists      gates pass      docs updated   version++
+ gathered    in docs/       tests pass       state updated   DEVLOG done    tag commit
+```
+
+### 6.0 Research Phase (NEW - v1.1)
+
+**Purpose:** Gather source-of-truth documentation before writing code.
+
+**Why this matters:** Without research, shader values are made up ("chroma_blur = 0.003") instead of derived from actual specifications (NTSC I channel bandwidth = 1.3 MHz).
+
+**Steps:**
+
+1. **Gather primary sources** using research MCP tools:
+   - `mcp__research__research_query` - Deep research on topics
+   - `mcp__research__retrieve_datasheet` - IC specifications
+   - `mcp__research__retrieve_patent` - Original circuit designs
+   - Web search for standards documents
+
+2. **Check existing documentation:**
+   - `docs/VIDEO_SYNTHESIS_TECHNICAL_REFERENCE.md`
+   - `docs/EMULATION_FIDELITY.md`
+   - `research/components/` directory
+
+3. **Build knowledge base entries:**
+   - `mcp__research__embed_document` - Add to searchable KB
+   - Record sources in spec document
+
+4. **Create specification document** with:
+   - Source citations
+   - Transfer functions as equations
+   - Quantitative values (bandwidth in MHz, not arbitrary floats)
+   - Expected visual characteristics
+   - Acceptance criteria
+
+**Research gate (must pass before implementation):**
+```json
+{
+  "spec_complete": {
+    "type": "inspection",
+    "description": "Specification document exists with cited values",
+    "expected": "docs/FEATURE_SPEC.md contains transfer functions and source citations",
+    "status": "pending"
+  }
+}
 ```
 
 ### 6.1 Specification Phase
@@ -580,10 +622,18 @@ Gates for v0.12 remain checked even when working on v0.13. Regression = gate tha
 
 ## 9. Gate Design Principles
 
-### 9.1 Every Shader Function Needs Two Gates
+### 9.1 Every Shader Function Needs THREE Gates
+
+The research-first workflow requires three tiers of verification:
 
 ```json
 {
+  "composite_spec_complete": {
+    "type": "inspection",
+    "description": "Specification exists with NTSC bandwidth values and sources",
+    "expected": "docs/CABLE_DEGRADATION_SPEC.md contains composite section with cited values",
+    "status": "pending"
+  },
   "composite_code_exists": {
     "type": "machine",
     "check": "grep 'fn composite_degrade' src/shaders/cables.wgsl",
@@ -597,6 +647,11 @@ Gates for v0.12 remain checked even when working on v0.13. Regression = gate tha
   }
 }
 ```
+
+**Gate ordering (must pass in sequence):**
+1. **spec_complete** - Research done, spec document exists
+2. **code_exists** - Implementation based on spec
+3. **visual_verified** - Output matches expected behavior
 
 ### 9.2 Inspection Gates Record Evidence
 
@@ -674,9 +729,38 @@ To initialize this protocol for Phosphlux:
 
 ---
 
+## 14. Verification Checklist for Shader Features
+
+Before marking any shader feature complete, verify all items:
+
+### Research Phase
+- [ ] Primary sources identified (standards, datasheets, patents)
+- [ ] Existing documentation checked (`docs/`, `research/`)
+- [ ] Specification document created with transfer functions
+- [ ] Quantitative values cited (not made up)
+
+### Implementation Phase
+- [ ] Code based on spec values (not arbitrary constants)
+- [ ] Constants documented with source reference
+- [ ] Function signature matches spec
+
+### Verification Phase
+- [ ] Workbench test with appropriate signal
+- [ ] Screenshot captured as evidence
+- [ ] Vision analysis confirms expected behavior
+- [ ] `project_state.json` updated with verification evidence
+
+### Documentation Phase
+- [ ] Spec document linked to implementation
+- [ ] DEVLOG updated with decisions
+- [ ] Committed with screenshot in `output/`
+
+---
+
 ## Document Metadata
 
-**Version:** 1.0
+**Version:** 1.1
 **Adapted from:** Scientific Collaboration Protocol v1.0
 **Created:** 2026-01-28
+**Updated:** 2026-01-28 - Added Research Phase (Section 6.0), three-tier gates (Section 9.1), verification checklist (Section 14)
 **For project:** Phosphlux (analog video synthesizer)

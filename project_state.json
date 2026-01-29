@@ -1,52 +1,59 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "project": "phosphlux",
   "current_version": "0.13",
   "current_phase": "in_progress",
-  "last_verified": "2026-01-28T20:06:44.488280",
-  "last_session_summary": "Added visual inspection gates to protocol. v0.13 PARTIAL: code exists but NO visual verification done. Must use workbench to verify each shader function produces correct output before marking complete.",
+  "last_verified": "2026-01-28T20:55:00Z",
+  "last_session_summary": "Implemented research-first workflow: created CABLE_DEGRADATION_SPEC.md with NTSC sources, rewrote cables.wgsl with spec-compliant values, updated DEVELOPMENT_PROTOCOL.md with Research Phase. Visual verification complete for all 4 cable types using workbench.",
   "versions": {
     "0.12": {
       "status": "complete",
       "title": "Multi-Pass Renderer",
       "gates": {
         "processing_mode_enum": {
+          "type": "machine",
           "description": "ProcessingMode enum exists for PixelProcessor vs ScanModulator",
           "check": "grep -r \"enum ProcessingMode\" src/gpu/shader_composer.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.451349"
         },
         "segment_shader_struct": {
+          "type": "machine",
           "description": "SegmentShader struct for multi-pass pipeline",
           "check": "grep -r \"struct SegmentShader\" src/gpu/shader_composer.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.451877"
         },
         "reachable_filtering": {
+          "type": "machine",
           "description": "Only devices upstream of output are rendered",
           "check": "grep -r \"fn reachable_from_output\" src/gpu/shader_composer.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.452265"
         },
         "lfo_state_struct": {
+          "type": "machine",
           "description": "LFO automation with speed, lo, hi parameters",
           "check": "grep -r \"struct LfoState\" src/ui/node_editor.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.452641"
         },
         "wobulator_scan_modulator": {
+          "type": "machine",
           "description": "Wobulator uses ScanModulator processing mode",
           "check": "grep -r \"ProcessingMode::ScanModulator\" src/devices/paik_abe/mod.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.452913"
         },
         "intermediate_textures": {
+          "type": "machine",
           "description": "Texture pool for multi-pass rendering",
           "check": "grep -r \"intermediate_textures\" src/gpu/renderer.rs",
           "status": "pass",
           "last_checked": "2026-01-28T20:06:44.453172"
         },
         "builds_release": {
+          "type": "machine",
           "description": "Project builds in release mode without errors",
           "check": "cargo build --release",
           "status": "pass"
@@ -58,106 +65,162 @@
       "status": "in_progress",
       "title": "Cable Degradation",
       "spec": "Different cable/connector types introduce distinct signal artifacts. Cables are connection properties, not devices.",
+      "spec_document": "docs/CABLE_DEGRADATION_SPEC.md",
       "gates": {
+        "cable_spec_complete": {
+          "type": "inspection",
+          "description": "Specification document exists with NTSC bandwidth values and source citations",
+          "expected": "docs/CABLE_DEGRADATION_SPEC.md contains transfer functions, YIQ matrices, bandwidth values",
+          "status": "pass",
+          "verified_by": "ai",
+          "verified_at": "2026-01-28T21:30:00Z",
+          "notes": "Created with NTSC I=1.3MHz Q=0.4MHz bandwidth, YIQ matrices from Wikipedia, RG-59 attenuation data"
+        },
         "cable_type_enum": {
+          "type": "machine",
           "description": "CableType enum with Ideal, Composite, SVideo, Component, RGB variants",
           "check": "grep -r \"enum CableType\" src/",
-          "status": "pass",
+          "status": "pending",
           "last_checked": "2026-01-28T20:06:44.460224"
         },
         "connection_has_cable_type": {
+          "type": "machine",
           "description": "Connection struct has cable_type field",
           "check": "grep -r \"cable_type.*CableType\" src/gpu/shader_composer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.460692"
         },
         "cables_wgsl_exists": {
+          "type": "machine",
           "description": "Cable degradation shader functions exist",
           "check": "dir src\\shaders\\cables.wgsl",
           "status": "pass",
-          "last_checked": "2026-01-28T20:06:44.460801"
+          "last_checked": "2026-01-28T21:30:00Z"
         },
         "composite_degradation_fn": {
           "type": "machine",
-          "description": "Composite cable degradation function exists",
+          "description": "Composite cable degradation function with YIQ processing",
           "check": "grep -r \"fn composite_degrade\" src/shaders/cables.wgsl",
           "status": "pass",
-          "last_checked": "2026-01-28T20:06:44.461112"
+          "last_checked": "2026-01-28T21:30:00Z"
+        },
+        "composite_uses_spec_values": {
+          "type": "inspection",
+          "description": "Composite function uses spec values (I=1.3MHz, Q=0.4MHz bandwidth)",
+          "expected": "COMPOSITE_BLUR_I and COMPOSITE_BLUR_Q constants with documented values",
+          "status": "pass",
+          "verified_by": "ai",
+          "verified_at": "2026-01-28T21:30:00Z",
+          "notes": "Constants documented with NTSC spec references"
         },
         "composite_visual_verified": {
           "type": "inspection",
           "description": "Composite degradation shows visible chroma blur and dot crawl on colorbars",
           "test_signal": "colorbars",
           "expected": "Chroma bleeding on sharp color transitions, visible dot crawl pattern at ~3.58MHz",
-          "screenshot": null,
-          "status": "pending",
-          "verified_by": null,
-          "verified_at": null
+          "screenshot": "output/composite_colorbars_verified.png",
+          "status": "pass",
+          "verified_by": "ai_vision",
+          "verified_at": "2026-01-28T20:52:00Z",
+          "notes": "Visible vertical striping (dot crawl) on all saturated color bars at 227.5 cycles/line"
         },
         "svideo_degradation_fn": {
           "type": "machine",
           "description": "S-Video cable degradation function exists",
           "check": "grep -r \"fn svideo_degrade\" src/shaders/cables.wgsl",
           "status": "pass",
-          "last_checked": "2026-01-28T20:06:44.461365"
+          "last_checked": "2026-01-28T21:30:00Z"
+        },
+        "svideo_no_dot_crawl": {
+          "type": "inspection",
+          "description": "S-Video function has NO dot crawl (Y/C separation)",
+          "expected": "Code shows no subcarrier phase calculation, no dot_crawl variable",
+          "status": "pass",
+          "verified_by": "ai",
+          "verified_at": "2026-01-28T21:30:00Z",
+          "notes": "Code explicitly comments 'NO dot crawl - this is the key difference from composite'"
         },
         "svideo_visual_verified": {
           "type": "inspection",
           "description": "S-Video degradation shows bandwidth limiting without chroma crosstalk",
           "test_signal": "colorbars",
           "expected": "Slight softening of edges, NO dot crawl or chroma bleeding (cleaner than composite)",
-          "screenshot": null,
-          "status": "pending",
-          "verified_by": null,
-          "verified_at": null
+          "screenshot": "output/svideo_colorbars_verified.png",
+          "status": "pass",
+          "verified_by": "ai_vision",
+          "verified_at": "2026-01-28T20:53:00Z",
+          "notes": "Clean solid color bars with NO dot crawl pattern - confirms Y/C separation working"
         },
         "component_degradation_fn": {
           "type": "machine",
           "description": "Component cable degradation function exists",
           "check": "grep -r \"fn component_degrade\" src/shaders/cables.wgsl",
           "status": "pass",
-          "last_checked": "2026-01-28T20:06:44.461610"
+          "last_checked": "2026-01-28T21:30:00Z"
+        },
+        "component_uses_ypbpr": {
+          "type": "inspection",
+          "description": "Component function uses YPbPr color space (not YIQ)",
+          "expected": "Code uses RGB_TO_PB, RGB_TO_PR constants, not RGB_TO_I/Q",
+          "status": "pass",
+          "verified_by": "ai",
+          "verified_at": "2026-01-28T21:30:00Z",
+          "notes": "Correctly uses YPbPr with documented conversion matrices"
         },
         "component_visual_verified": {
           "type": "inspection",
           "description": "Component degradation shows minimal artifacts, slight HF rolloff",
           "test_signal": "colorbars",
           "expected": "Nearly clean output, slight softening only visible on fine detail",
-          "screenshot": null,
-          "status": "pending",
-          "verified_by": null,
-          "verified_at": null
+          "screenshot": "output/component_colorbars_verified.png",
+          "status": "pass",
+          "verified_by": "ai_vision",
+          "verified_at": "2026-01-28T20:54:00Z",
+          "notes": "Clean output, nearly identical to source - minimal visible degradation"
         },
         "rgb_degradation_fn": {
           "type": "machine",
           "description": "RGB cable degradation function exists",
           "check": "grep -r \"fn rgb_degrade\" src/shaders/cables.wgsl",
           "status": "pass",
-          "last_checked": "2026-01-28T20:06:44.461610"
+          "last_checked": "2026-01-28T21:30:00Z"
+        },
+        "rgb_no_colorspace_conversion": {
+          "type": "inspection",
+          "description": "RGB function does NOT convert to YIQ/YPbPr",
+          "expected": "Code processes R, G, B channels directly without color space conversion",
+          "status": "pass",
+          "verified_by": "ai",
+          "verified_at": "2026-01-28T21:30:00Z",
+          "notes": "Correctly applies identical HF rolloff to all channels without conversion"
         },
         "rgb_visual_verified": {
           "type": "inspection",
           "description": "RGB degradation shows cleanest output with only cable-length HF rolloff",
           "test_signal": "colorbars",
           "expected": "Cleanest of all cable types, minimal visible degradation",
-          "screenshot": null,
-          "status": "pending",
-          "verified_by": null,
-          "verified_at": null
+          "screenshot": "output/rgb_colorbars_verified.png",
+          "status": "pass",
+          "verified_by": "ai_vision",
+          "verified_at": "2026-01-28T20:55:00Z",
+          "notes": "Cleanest output - perfect solid color bars with no artifacts"
         },
         "cable_type_in_ui": {
+          "type": "machine",
           "description": "Cable type selector in node editor inspector",
           "check": "grep -r \"CableType\" src/ui/node_editor.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.461919"
         },
         "composer_inserts_cable_calls": {
+          "type": "machine",
           "description": "Shader composer inserts cable degradation between devices",
           "check": "grep -r \"cable_degrade\" src/gpu/shader_composer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.462213"
         },
         "builds_release": {
+          "type": "machine",
           "description": "Project builds in release mode without errors",
           "check": "cargo build --release",
           "status": "pending"
@@ -170,48 +233,56 @@
       "spec": "Refactor colorizer into 5 authentic stages: InputMatrix, PedColorizer, FoldingAmp, Wobulator, OutputEncoder",
       "gates": {
         "input_matrix_struct": {
+          "type": "machine",
           "description": "PaikAbeInputMatrix device (7-channel weighted mixing)",
           "check": "grep -r \"struct PaikAbeInputMatrix\" src/devices/paik_abe/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.463034"
         },
         "ped_colorizer_struct": {
+          "type": "machine",
           "description": "PaikAbePedColorizer device (amplitude window colorization)",
           "check": "grep -r \"struct PaikAbePedColorizer\" src/devices/paik_abe/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.463779"
         },
         "folding_amp_struct": {
+          "type": "machine",
           "description": "PaikAbeFoldingAmp device (triangle wave folding)",
           "check": "grep -r \"struct PaikAbeFoldingAmp\" src/devices/paik_abe/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.464524"
         },
         "output_encoder_struct": {
+          "type": "machine",
           "description": "PaikAbeOutputEncoder device (video amplifier output stage)",
           "check": "grep -r \"struct PaikAbeOutputEncoder\" src/devices/paik_abe/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.465299"
         },
         "patch_save_fn": {
+          "type": "machine",
           "description": "Patch save functionality",
           "check": "grep -r \"fn save_patch\" src/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.471484"
         },
         "patch_load_fn": {
+          "type": "machine",
           "description": "Patch load functionality",
           "check": "grep -r \"fn load_patch\" src/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.477158"
         },
         "devices_registered": {
+          "type": "machine",
           "description": "All new devices registered in device_registry.rs",
           "check": "grep -r \"PaikAbeInputMatrix\\|PaikAbePedColorizer\\|PaikAbeFoldingAmp\\|PaikAbeOutputEncoder\" src/ui/device_registry.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.477528"
         },
         "builds_release": {
+          "type": "machine",
           "description": "Project builds in release mode without errors",
           "check": "cargo build --release",
           "status": "pending"
@@ -224,36 +295,42 @@
       "spec": "DisplayOutput device with phosphor persistence, scanlines, curvature, bloom, shadow mask",
       "gates": {
         "crt_monitor_struct": {
+          "type": "machine",
           "description": "CrtMonitor device struct",
           "check": "grep -r \"struct CrtMonitor\" src/devices/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.479310"
         },
         "display_output_mode": {
+          "type": "machine",
           "description": "ProcessingMode::DisplayOutput variant",
           "check": "grep -r \"DisplayOutput\" src/gpu/shader_composer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.479679"
         },
         "phosphor_persistence": {
+          "type": "machine",
           "description": "Per-channel phosphor decay parameters",
           "check": "grep -r \"phosphor_decay\\|phosphor_persistence\" src/devices/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.481429"
         },
         "feedback_pair_struct": {
+          "type": "machine",
           "description": "Ping-pong feedback pair for temporal persistence",
           "check": "grep -r \"FeedbackPair\\|feedback_pair\" src/gpu/renderer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.481755"
         },
         "crt_wgsl_exists": {
+          "type": "machine",
           "description": "CRT shader with scanlines, curvature, bloom",
           "check": "dir src\\devices\\crt*.wgsl",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.482265"
         },
         "builds_release": {
+          "type": "machine",
           "description": "Project builds in release mode without errors",
           "check": "cargo build --release",
           "status": "pending"
@@ -266,36 +343,42 @@
       "spec": "OpticalInput device that reads CRT screen texture, enabling classic video feedback",
       "gates": {
         "camcorder_struct": {
+          "type": "machine",
           "description": "Camcorder device struct",
           "check": "grep -r \"struct Camcorder\" src/devices/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.484257"
         },
         "optical_input_mode": {
+          "type": "machine",
           "description": "ProcessingMode::OpticalInput variant",
           "check": "grep -r \"OpticalInput\" src/gpu/shader_composer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.484682"
         },
         "optical_connection": {
+          "type": "machine",
           "description": "ConnectionKind::Optical for camera-to-CRT links",
           "check": "grep -r \"ConnectionKind::Optical\\|Optical\" src/gpu/shader_composer.rs",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.484975"
         },
         "agc_parameter": {
+          "type": "machine",
           "description": "Automatic gain control parameter",
           "check": "grep -r \"agc_target\\|agc_speed\" src/devices/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.486776"
         },
         "reads_crt_texture": {
+          "type": "machine",
           "description": "Camcorder reads CRT's previous frame texture",
           "check": "grep -r \"crt_screen_texture\\|screen_texture\" src/devices/",
           "status": "pending",
           "last_checked": "2026-01-28T20:06:44.488222"
         },
         "builds_release": {
+          "type": "machine",
           "description": "Project builds in release mode without errors",
           "check": "cargo build --release",
           "status": "pending"
@@ -306,24 +389,34 @@
   "open_issues": [],
   "next_actions": [
     {
-      "action": "Verify composite_degrade in workbench",
-      "description": "Load cables.wgsl into workbench, inject colorbars, verify visible chroma blur and dot crawl. Screenshot and record in state."
+      "action": "Integrate CableType into Rust code",
+      "description": "Add CableType enum, Connection.cable_type field, UI selector, and composer integration"
     },
     {
-      "action": "Implement and verify svideo_degrade",
-      "description": "Replace stub with real implementation. Verify in workbench: bandwidth limiting WITHOUT dot crawl (cleaner than composite)."
-    },
-    {
-      "action": "Implement and verify component_degrade",
-      "description": "Replace stub with real implementation. Verify in workbench: minimal degradation, slight HF rolloff only."
-    },
-    {
-      "action": "Implement and verify rgb_degrade",
-      "description": "Replace stub with real implementation. Verify in workbench: cleanest output, cable-length dependent HF rolloff."
-    },
-    {
-      "action": "Add CableType UI and composer integration",
-      "description": "After all visual gates pass, add UI selector and composer cable_degrade insertion."
+      "action": "Build and test full pipeline",
+      "description": "Run cargo build --release, test cable selection in UI"
     }
-  ]
+  ],
+  "research_sources": {
+    "ntsc_spec": {
+      "url": "https://en.wikipedia.org/wiki/NTSC",
+      "used_for": "Subcarrier frequency (3.579545 MHz), I/Q bandwidth (1.3/0.4 MHz)"
+    },
+    "yiq_colorspace": {
+      "url": "https://en.wikipedia.org/wiki/YIQ",
+      "used_for": "RGB to YIQ and YIQ to RGB conversion matrices"
+    },
+    "dot_crawl": {
+      "url": "https://en.wikipedia.org/wiki/Dot_crawl",
+      "used_for": "Understanding Y/C crosstalk artifact"
+    },
+    "svideo": {
+      "url": "https://en.wikipedia.org/wiki/S-Video",
+      "used_for": "Y/C separation benefits, bandwidth specs"
+    },
+    "rg59_attenuation": {
+      "url": "https://en.wikipedia.org/wiki/RG-59",
+      "used_for": "Cable attenuation values (dB/100ft)"
+    }
+  }
 }
