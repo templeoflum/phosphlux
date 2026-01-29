@@ -80,9 +80,23 @@ enum ConnectionDragMode {
 
 #[derive(Clone)]
 pub struct LfoState {
-    pub speed: f32, // Hz
-    pub lo: f32,    // lower bound of oscillation
-    pub hi: f32,    // upper bound of oscillation
+    pub speed: f32,     // Base Hz (or multiplier of global tempo)
+    pub lo: f32,        // lower bound of oscillation
+    pub hi: f32,        // upper bound of oscillation
+    pub offset: f32,    // Phase offset (0.0 to 1.0, wraps)
+    pub subdivide: f32, // Tempo subdivision (0.25, 0.5, 1, 2, 4, etc.)
+}
+
+impl Default for LfoState {
+    fn default() -> Self {
+        Self {
+            speed: 0.1,
+            lo: 0.0,
+            hi: 1.0,
+            offset: 0.0,
+            subdivide: 1.0,
+        }
+    }
 }
 
 // ─── Node Editor State ───────────────────────────────────────
@@ -105,6 +119,7 @@ pub struct NodeEditor {
     pub params_modified: bool,
     pub lfo_active: HashMap<(u32, String), LfoState>,
     lfo_start: Instant,
+    pub global_bpm: f32, // Global tempo in BPM (default 120)
 }
 
 impl Default for NodeEditor {
@@ -127,6 +142,7 @@ impl Default for NodeEditor {
             params_modified: false,
             lfo_active: HashMap::new(),
             lfo_start: Instant::now(),
+            global_bpm: 120.0,
         }
     }
 }
@@ -145,13 +161,22 @@ impl NodeEditor {
             return false;
         }
         let mut changed = false;
+        // Convert global BPM to Hz (beats per second)
+        let bpm_hz = self.global_bpm / 60.0;
+
         for ((instance_id, param_name), lfo) in &self.lfo_active {
             if let Some(device) = patch.get_device_mut(*instance_id) {
                 let center = (lfo.lo + lfo.hi) / 2.0;
                 let range = (lfo.hi - lfo.lo) / 2.0;
-                let val = center
-                    + range
-                        * (time_secs as f32 * lfo.speed * std::f32::consts::TAU).sin();
+
+                // Calculate effective frequency: base speed * subdivide, synced to global BPM
+                // speed acts as a multiplier of the BPM-derived frequency
+                let effective_hz = bpm_hz * lfo.speed * lfo.subdivide;
+
+                // Phase includes offset (0-1 maps to 0-2π)
+                let phase = time_secs as f32 * effective_hz + lfo.offset;
+
+                let val = center + range * (phase * std::f32::consts::TAU).sin();
                 let val = val.clamp(lfo.lo, lfo.hi);
                 device.params.insert(param_name.clone(), val);
                 changed = true;
@@ -339,7 +364,7 @@ pub fn render_node_canvas(
     } else if let Some((_, is_output, _)) = editor.hovered_socket {
         if is_output { "Drag to connect" } else { "Drag to unplug" }
     } else if editor.hovered_node.is_some() {
-        "Drag to move \u{2022} Right-click to delete \u{2022} Del key"
+        "Drag to move \u{2022} Ctrl+click to connect \u{2022} Right-click to delete"
     } else {
         "Middle-drag to pan \u{2022} Scroll to zoom \u{2022} Home to reset"
     };
@@ -606,22 +631,57 @@ fn handle_canvas_input(
 
             // Check node selection/drag
             if !started_interaction {
+                let ctrl_held = ui.input(|i| i.modifiers.ctrl);
                 let mut found_node = false;
+                let mut clicked_id: Option<u32> = None;
+                let mut node_pos: Option<(f32, f32)> = None;
+
+                // First pass: find clicked node
                 for device in &patch.devices {
                     let rect = editor.node_rect(device, canvas_rect);
                     if rect.contains(pos) {
-                        let node_screen = editor.canvas_to_screen(
-                            Pos2::new(device.position.0, device.position.1),
-                            canvas_rect,
-                        );
-                        editor.drag_offset = pos - node_screen;
-                        editor.dragging_node = Some(device.instance_id);
-                        editor.selected_node = Some(device.instance_id);
-                        editor.selected_connection = None;
+                        clicked_id = Some(device.instance_id);
+                        node_pos = Some(device.position);
                         found_node = true;
                         break;
                     }
                 }
+
+                // Handle ctrl+click connection (after loop to avoid borrow issues)
+                if let Some(target_id) = clicked_id {
+                    if ctrl_held {
+                        if let Some(from_id) = editor.selected_node {
+                            if from_id != target_id {
+                                // Get port names
+                                let connection_info: Option<(String, String)> = {
+                                    let from_dev = patch.get_device(from_id);
+                                    let to_dev = patch.get_device(target_id);
+                                    if let (Some(f), Some(t)) = (from_dev, to_dev) {
+                                        let outputs = f.device.outputs();
+                                        let inputs = t.device.inputs();
+                                        if !outputs.is_empty() && !inputs.is_empty() {
+                                            Some((outputs[0].name.clone(), inputs[0].name.clone()))
+                                        } else { None }
+                                    } else { None }
+                                };
+                                if let Some((from_port, to_port)) = connection_info {
+                                    patch.connect(from_id, &from_port, target_id, &to_port);
+                                    editor.graph_modified = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // Update selection and drag state
+                    if let Some((px, py)) = node_pos {
+                        let node_screen = editor.canvas_to_screen(Pos2::new(px, py), canvas_rect);
+                        editor.drag_offset = pos - node_screen;
+                    }
+                    editor.dragging_node = Some(target_id);
+                    editor.selected_node = Some(target_id);
+                    editor.selected_connection = None;
+                }
+
                 if !found_node {
                     editor.selected_node = None;
                     editor.selected_connection = None;
@@ -916,6 +976,31 @@ pub fn render_node_palette(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &m
                 }
             });
     }
+
+    ui.add_space(16.0);
+    ui.separator();
+    ui.heading("Tempo");
+
+    ui.horizontal(|ui| {
+        ui.label("BPM:");
+        ui.add(egui::DragValue::new(&mut editor.global_bpm)
+            .range(20.0..=300.0)
+            .speed(1.0))
+            .on_hover_text("Global tempo for all LFOs");
+    });
+
+    // Quick tempo presets
+    ui.horizontal(|ui| {
+        if ui.small_button("60").clicked() { editor.global_bpm = 60.0; }
+        if ui.small_button("90").clicked() { editor.global_bpm = 90.0; }
+        if ui.small_button("120").clicked() { editor.global_bpm = 120.0; }
+        if ui.small_button("140").clicked() { editor.global_bpm = 140.0; }
+    });
+
+    if !editor.lfo_active.is_empty() {
+        ui.add_space(8.0);
+        ui.weak(format!("{} LFO(s) active", editor.lfo_active.len()));
+    }
 }
 
 // ─── Inspector (right panel bottom) ───────────────────────────
@@ -1073,20 +1158,24 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                     if stop_lfo {
                         editor.lfo_active.remove(&lfo_key);
                     } else if cycle_lfo {
-                        let lo = lfo_state.as_ref().map(|s| s.lo).unwrap_or(param.min);
-                        let hi = lfo_state.as_ref().map(|s| s.hi).unwrap_or(param.max);
+                        let existing = lfo_state.as_ref();
+                        let lo = existing.map(|s| s.lo).unwrap_or(param.min);
+                        let hi = existing.map(|s| s.hi).unwrap_or(param.max);
+                        let offset = existing.map(|s| s.offset).unwrap_or(0.0);
+                        let subdivide = existing.map(|s| s.subdivide).unwrap_or(1.0);
                         match lfo_speed {
-                            None => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.1, lo: param.min, hi: param.max }); }
-                            Some(s) if s < 0.15 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.25, lo, hi }); }
-                            Some(s) if s < 0.4 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.5, lo, hi }); }
+                            None => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.1, lo: param.min, hi: param.max, offset, subdivide }); }
+                            Some(s) if s < 0.15 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.25, lo, hi, offset, subdivide }); }
+                            Some(s) if s < 0.4 => { editor.lfo_active.insert(lfo_key.clone(), LfoState { speed: 0.5, lo, hi, offset, subdivide }); }
                             _ => { editor.lfo_active.remove(&lfo_key); }
                         }
                     }
 
-                    // Show lo/hi range controls when LFO is active
+                    // Show LFO controls when active
                     if editor.lfo_active.contains_key(&lfo_key) {
+                        // Range controls
                         ui.horizontal(|ui| {
-                            ui.add_space(24.0); // indent past LFO button
+                            ui.add_space(24.0);
                             ui.weak("Range:");
                             let lfo = editor.lfo_active.get_mut(&lfo_key).unwrap();
                             let mut lo = lfo.lo;
@@ -1101,6 +1190,32 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                                 .prefix("hi: "));
                             lfo.lo = lo;
                             lfo.hi = hi;
+                        });
+                        // Offset and Subdivide controls
+                        ui.horizontal(|ui| {
+                            ui.add_space(24.0);
+                            let lfo = editor.lfo_active.get_mut(&lfo_key).unwrap();
+                            let mut offset = lfo.offset;
+                            let mut subdivide = lfo.subdivide;
+                            ui.add(egui::DragValue::new(&mut offset)
+                                .range(0.0..=1.0)
+                                .speed(0.01)
+                                .prefix("phase: "))
+                                .on_hover_text("Phase offset (0-1)");
+                            // Subdivide selector: common musical divisions
+                            egui::ComboBox::from_id_salt(format!("subdiv_{}", param.name))
+                                .selected_text(format!("÷{}", subdivide))
+                                .width(50.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut subdivide, 0.25, "÷0.25 (4x slower)");
+                                    ui.selectable_value(&mut subdivide, 0.5, "÷0.5 (2x slower)");
+                                    ui.selectable_value(&mut subdivide, 1.0, "÷1 (1:1)");
+                                    ui.selectable_value(&mut subdivide, 2.0, "÷2 (2x faster)");
+                                    ui.selectable_value(&mut subdivide, 4.0, "÷4 (4x faster)");
+                                    ui.selectable_value(&mut subdivide, 8.0, "÷8 (8x faster)");
+                                });
+                            lfo.offset = offset;
+                            lfo.subdivide = subdivide;
                         });
                     }
 

@@ -20,4 +20,11 @@ pub mod paik_abe;
 // pub mod lzx;         // TODO
 
 pub use generators::TestSignalGenerator;
-pub use paik_abe::{PaikAbeColorizer, PaikAbeWobulator};
+pub use paik_abe::{
+    PaikAbeColorizer,
+    PaikAbeFoldingAmp,
+    PaikAbeInputMatrix,
+    PaikAbeOutputEncoder,
+    PaikAbePedColorizer,
+    PaikAbeWobulator,
+};

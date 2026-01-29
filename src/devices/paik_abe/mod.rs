@@ -13,11 +13,269 @@
 
 use crate::gpu::{DeviceParameter, Port, ProcessingMode, ShaderDevice, SignalType};
 
-/// The Paik/Abe Colorizer
+// ============================================================================
+// PAIK/ABE FOLDING AMPLIFIER
+// ============================================================================
+
+/// Paik/Abe Folding Amplifier
 ///
-/// This is the heart of the Paik/Abe synthesizer - converts luminance
-/// to color through waveshaping. Uses op-amp saturation and triangle
-/// folding to create the characteristic psychedelic color shifts.
+/// Standalone folding amplifier that creates the characteristic Paik/Abe
+/// waveshaping effect. Takes input luminance and folds it back on itself
+/// to create distinctive banding patterns. This is the core of the
+/// psychedelic color effect when combined with differential gains.
+pub struct PaikAbeFoldingAmp {
+    name: String,
+}
+
+impl PaikAbeFoldingAmp {
+    pub fn new() -> Self {
+        Self {
+            name: "Paik/Abe Folding Amp".to_string(),
+        }
+    }
+}
+
+impl Default for PaikAbeFoldingAmp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShaderDevice for PaikAbeFoldingAmp {
+    fn device_id(&self) -> &'static str {
+        "paik_abe_folding_amp"
+    }
+
+    fn device_name(&self) -> &str {
+        &self.name
+    }
+
+    fn shader_code(&self) -> &str {
+        include_str!("folding_amp.wgsl")
+    }
+
+    fn parameters(&self) -> Vec<DeviceParameter> {
+        vec![
+            DeviceParameter::new("gain", "Gain", 1.0, 8.0, 2.0),
+            DeviceParameter::new("depth", "Fold Depth", 1.0, 5.0, 2.0),
+            DeviceParameter::new("bias", "Bias", 0.0, 1.0, 0.5),
+        ]
+    }
+
+    fn inputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_in".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+
+    fn outputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_out".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+}
+
+// ============================================================================
+// PAIK/ABE INPUT MATRIX
+// ============================================================================
+
+/// Paik/Abe Input Matrix
+///
+/// 7-channel to RGB matrix mixer based on CA3054 differential amplifiers.
+/// This is the input stage of the Paik/Abe Video Synthesizer that creates
+/// weighted combinations of input channels for further processing.
+pub struct PaikAbeInputMatrix {
+    name: String,
+}
+
+impl PaikAbeInputMatrix {
+    pub fn new() -> Self {
+        Self {
+            name: "Paik/Abe Input Matrix".to_string(),
+        }
+    }
+}
+
+impl Default for PaikAbeInputMatrix {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShaderDevice for PaikAbeInputMatrix {
+    fn device_id(&self) -> &'static str {
+        "paik_abe_input_matrix"
+    }
+
+    fn device_name(&self) -> &str {
+        &self.name
+    }
+
+    fn shader_code(&self) -> &str {
+        include_str!("input_matrix.wgsl")
+    }
+
+    fn parameters(&self) -> Vec<DeviceParameter> {
+        vec![
+            DeviceParameter::new("r_mix", "Red Mix", 0.0, 2.0, 1.0),
+            DeviceParameter::new("g_mix", "Green Mix", 0.0, 2.0, 1.0),
+            DeviceParameter::new("b_mix", "Blue Mix", 0.0, 2.0, 1.0),
+            DeviceParameter::new("rotation", "Rotation", 0.0, 1.0, 0.0),
+        ]
+    }
+
+    fn inputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_in".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+
+    fn outputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_out".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+}
+
+// ============================================================================
+// PAIK/ABE PED COLORIZER
+// ============================================================================
+
+/// Paik/Abe PED Colorizer
+///
+/// Amplitude window colorizer based on CA3019 matched diode array.
+/// Maps luminance levels to specific colors based on pedestal thresholds,
+/// creating the characteristic Paik/Abe posterized psychedelic effect.
+pub struct PaikAbePedColorizer {
+    name: String,
+}
+
+impl PaikAbePedColorizer {
+    pub fn new() -> Self {
+        Self {
+            name: "Paik/Abe PED Colorizer".to_string(),
+        }
+    }
+}
+
+impl Default for PaikAbePedColorizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShaderDevice for PaikAbePedColorizer {
+    fn device_id(&self) -> &'static str {
+        "paik_abe_ped_colorizer"
+    }
+
+    fn device_name(&self) -> &str {
+        &self.name
+    }
+
+    fn shader_code(&self) -> &str {
+        include_str!("ped_colorizer.wgsl")
+    }
+
+    fn parameters(&self) -> Vec<DeviceParameter> {
+        vec![
+            DeviceParameter::new("threshold_1", "Threshold 1", 0.0, 1.0, 0.25),
+            DeviceParameter::new("threshold_2", "Threshold 2", 0.0, 1.0, 0.50),
+            DeviceParameter::new("threshold_3", "Threshold 3", 0.0, 1.0, 0.75),
+            DeviceParameter::new("softness", "Softness", 0.0, 1.0, 0.25),
+        ]
+    }
+
+    fn inputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_in".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+
+    fn outputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_out".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+}
+
+// ============================================================================
+// PAIK/ABE OUTPUT ENCODER
+// ============================================================================
+
+/// Paik/Abe Output Encoder
+///
+/// Final output stage that provides the characteristic "warmth" and analog feel
+/// through LM741 op-amp saturation, slew limiting, and thermal drift simulation.
+pub struct PaikAbeOutputEncoder {
+    name: String,
+}
+
+impl PaikAbeOutputEncoder {
+    pub fn new() -> Self {
+        Self {
+            name: "Paik/Abe Output Encoder".to_string(),
+        }
+    }
+}
+
+impl Default for PaikAbeOutputEncoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShaderDevice for PaikAbeOutputEncoder {
+    fn device_id(&self) -> &'static str {
+        "paik_abe_output_encoder"
+    }
+
+    fn device_name(&self) -> &str {
+        &self.name
+    }
+
+    fn shader_code(&self) -> &str {
+        include_str!("output_encoder.wgsl")
+    }
+
+    fn parameters(&self) -> Vec<DeviceParameter> {
+        vec![
+            DeviceParameter::new("saturation", "Saturation", 0.0, 2.0, 1.0),
+            DeviceParameter::new("slew", "Slew (741 Char)", 0.0, 1.0, 0.3),
+            DeviceParameter::new("warmth", "Warmth", 0.0, 1.0, 0.5),
+        ]
+    }
+
+    fn inputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_in".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+
+    fn outputs(&self) -> Vec<Port> {
+        vec![Port {
+            name: "video_out".to_string(),
+            signal_type: SignalType::Rgb,
+        }]
+    }
+}
+
+// ============================================================================
+// PAIK/ABE COLORIZER (LEGACY - KEPT FOR BACKWARDS COMPATIBILITY)
+// ============================================================================
+
+/// The Paik/Abe Colorizer (Legacy)
+///
+/// This is the combined colorizer that includes all stages in one device.
+/// Kept for backwards compatibility - new patches should use the separate
+/// InputMatrix, FoldingAmp, PedColorizer, and OutputEncoder devices.
 pub struct PaikAbeColorizer {
     name: String,
 }

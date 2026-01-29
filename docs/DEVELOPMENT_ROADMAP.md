@@ -70,9 +70,9 @@ Different cable/connector types introduce distinct signal artifacts:
 - [x] Component/RGB: wider bandwidth, minimal degradation, cable-length HF rolloff (YPbPr)
 - [x] Cable type selector in inspector, colored cables in node editor
 
-### v0.14 — Full Paik/Abe Chain ("Authentic Signal Path")
+### v0.14 — Full Paik/Abe Chain ("Authentic Signal Path") ✓
 
-The real Paik/Abe has 5 stages. Refactor the existing colorizer into separate devices:
+The real Paik/Abe has 5 stages. Refactored the existing colorizer into separate devices:
 
 | Device | ProcessingMode | Description |
 |--------|---------------|-------------|
@@ -80,10 +80,12 @@ The real Paik/Abe has 5 stages. Refactor the existing colorizer into separate de
 | `PaikAbePedColorizer` | PixelProcessor | Amplitude window colorization (CA3019 diode array) |
 | `PaikAbeFoldingAmp` | PixelProcessor | Triangle wave folding per channel |
 | `PaikAbeWobulator` | ScanModulator | UV displacement from oscillators + video modulation |
-| `PaikAbeOutputEncoder` | PixelProcessor | CA3022/CA3023 video amplifier output stage |
+| `PaikAbeOutputEncoder` | PixelProcessor | LM741 op-amp output stage |
 
-- [ ] Implement InputMatrix, PedColorizer, FoldingAmp, OutputEncoder devices
-- [ ] Refactor existing colorizer into separate devices
+- [x] Implement InputMatrix, PedColorizer, FoldingAmp, OutputEncoder devices
+- [x] Refactor existing colorizer into separate devices
+- [x] Ctrl+click quick-connect for rapid patch building
+- [x] LFO enhancements: global BPM, per-param phase offset and subdivide
 - [ ] Create default Paik/Abe preset patch
 - [ ] Add patch save/load system (JSON)
 

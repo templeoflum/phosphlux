@@ -1237,4 +1237,104 @@ Composite degradation visually verified on color bars test pattern — chroma bl
 
 ---
 
+## v0.14 — Full Paik/Abe Chain ("Authentic Signal Path")
+
+### Overview
+
+The real Paik/Abe Video Synthesizer has 5 distinct processing stages. v0.14 refactors the monolithic `PaikAbeColorizer` into 4 separate authentic devices matching the real hardware signal path, plus the existing Wobulator.
+
+### New Devices
+
+| Device | Mode | Description | IC Reference |
+|--------|------|-------------|--------------|
+| `PaikAbeInputMatrix` | PixelProcessor | 7-channel weighted RGB mixing | CA3054 differential amplifiers |
+| `PaikAbeFoldingAmp` | PixelProcessor | Triangle wave folding per channel | Custom folding circuit |
+| `PaikAbePedColorizer` | PixelProcessor | Amplitude window colorization | CA3019 matched diode array |
+| `PaikAbeOutputEncoder` | PixelProcessor | Op-amp saturation and warmth | LM741 op-amp stage |
+
+**Signal Flow:**
+```
+Input → InputMatrix → FoldingAmp → PedColorizer → OutputEncoder → Output
+              ↓
+         Wobulator (optional parallel path, ScanModulator)
+```
+
+### Device Parameters
+
+**PaikAbeInputMatrix:**
+- `r_mix` (0.0-2.0, default 1.0) — Red channel gain
+- `g_mix` (0.0-2.0, default 1.0) — Green channel gain
+- `b_mix` (0.0-2.0, default 1.0) — Blue channel gain
+- `rotation` (0.0-1.0, default 0.0) — Matrix rotation angle
+
+**PaikAbeFoldingAmp:**
+- `gain` (1.0-8.0, default 2.0) — Fold amount/intensity
+- `depth` (1.0-5.0, default 2.0) — Number of fold stages
+- `bias` (0.0-1.0, default 0.5) — DC offset/asymmetry
+
+**PaikAbePedColorizer:**
+- `threshold_1` (0.0-1.0, default 0.25) — Low amplitude window
+- `threshold_2` (0.0-1.0, default 0.50) — Mid amplitude window
+- `threshold_3` (0.0-1.0, default 0.75) — High amplitude window
+- `softness` (0.0-1.0, default 0.25) — Window edge softness
+
+**PaikAbeOutputEncoder:**
+- `saturation` (0.0-2.0, default 1.0) — Color saturation boost
+- `slew` (0.0-1.0, default 0.3) — Op-amp slew rate character
+- `warmth` (0.0-1.0, default 0.5) — Thermal drift simulation
+
+### Shader Namespace Solution
+
+When composing multiple device shaders together, helper function and constant names can collide. v0.14 establishes a namespacing convention:
+
+**Problem:** Generic names like `matrix_row()`, `VT`, `diode_conducting()` caused WGSL compilation failures when multiple devices were connected.
+
+**Solution:** Prefix all shader helpers with device-specific identifiers:
+- `input_matrix_row()`, `INPUT_MATRIX_VT` — InputMatrix shader
+- `ped_diode_conducting()`, `PED_DIODE_VT`, `PED_DIODE_VF` — PedColorizer shader
+- `output_opamp_saturation()` — OutputEncoder shader
+
+This allows arbitrary device combinations without shader conflicts.
+
+### UX Improvements
+
+**Ctrl+Click Quick-Connect:**
+- Select a node, then Ctrl+click another node to instantly connect them
+- Connection goes from selected node's output to clicked node's input
+- Clicked node becomes selected for chaining: Ctrl+click → Ctrl+click → Ctrl+click
+- Dramatically speeds up patch building
+
+**LFO Enhancements:**
+- **Global BPM** (60-200, default 120): Master tempo for all LFOs
+- **Phase Offset** (0.0-1.0): Per-parameter phase shift for polyrhythms
+- **Subdivide** (1x, 2x, 4x, 8x): Per-parameter tempo subdivision
+- BPM preset buttons: 60, 90, 120, 140 for quick tempo changes
+- Formula: `frequency = (bpm / 60.0) * subdivide`
+
+### Files
+
+| File | Status | Description |
+|------|--------|-------------|
+| `src/devices/paik_abe/input_matrix.wgsl` | Created | 7-channel matrix mixer shader |
+| `src/devices/paik_abe/folding_amp.wgsl` | Created | Triangle wave folding shader |
+| `src/devices/paik_abe/ped_colorizer.wgsl` | Created | Amplitude window colorizer shader |
+| `src/devices/paik_abe/output_encoder.wgsl` | Created | Op-amp output stage shader |
+| `src/devices/paik_abe/mod.rs` | Modified | Added 4 new ShaderDevice implementations |
+| `src/devices/mod.rs` | Modified | Export new devices |
+| `src/ui/device_registry.rs` | Modified | Register new devices in Paik/Abe category |
+| `src/ui/node_editor.rs` | Modified | Ctrl+click connect, LFO BPM/offset/subdivide |
+
+### Design Philosophy
+
+The UX changes in v0.14 establish a "single-click" interaction pattern:
+- 1 click to place a node from palette
+- Ctrl+click to connect nodes in sequence
+- 1 click to enable LFO on any parameter
+- 1 click to change LFO speed preset
+- Right-click to disable LFO
+
+This minimal-friction approach makes complex patch building intuitive and fast.
+
+---
+
 *Last updated: January 2026*
