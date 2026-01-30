@@ -1570,11 +1570,11 @@ With multi-input runtime support complete, the authentic 7-input matrix mixer de
 
 ---
 
-## v0.17 — Phosphlux Lite & Workspace Restructuring ("Two Flavors")
+## v0.17 — Workspace Restructuring
 
 ### Overview
 
-Major project restructuring: converted to a Cargo workspace with two applications. Added Phosphlux Lite — a simplified fixed-pipeline synthesizer for immediate playability without node patching complexity.
+Converted project to Cargo workspace and reorganized source files.
 
 ### Git Restructuring
 
@@ -1592,105 +1592,16 @@ The research-integration branch had diverged significantly with valuable work (d
 phosphlux/
 ├── Cargo.toml              # Workspace root with shared dependencies
 ├── apps/
-│   ├── phosphlux/          # Full node-graph synthesizer (moved from src/)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   └── phosphlux-lite/     # NEW: Fixed-pipeline synthesizer
+│   └── phosphlux/          # Main synthesizer (moved from src/)
 │       ├── Cargo.toml
-│       ├── src/
-│       └── shaders/
+│       └── src/
 └── tools/                  # Research tools (unchanged)
 ```
 
 **Benefits:**
-- Shared dependency versions (wgpu, egui, etc.)
-- Build both apps with `cargo build --workspace`
-- Common release profiles
-- Clear separation of concerns
-
-### Phosphlux Lite
-
-A unified instrument capturing vintage analog video synthesis aesthetics:
-
-**7-Stage Fixed Pipeline:**
-```
-[INPUT] → [GEOMETRY] → [AMPLITUDE] → [COLORIZE] → [MIXER] → [FEEDBACK] → [OUTPUT]
-```
-
-**Stage Breakdown:**
-
-| Stage | Inspired By | Key Controls |
-|-------|-------------|--------------|
-| Input | Pattern generators | Source A/B, mix, frequency |
-| Geometry | Paik/Abe wobbulator, Rutt/Etra | Wobble H/V, Z-displacement, Lissajous |
-| Amplitude | Sandin classifier | Fold, quantize, clip, solarize |
-| Colorize | Jones colorizer | Spectrum, threshold, gradient modes |
-| Mixer | Video mixers | Blend modes, luma key, feedback mix |
-| Feedback | Video feedback loops | Zoom, rotation, hue shift, decay |
-| Output | CRT/VHS/Cable | Scanlines, tracking, chroma shift |
-
-**Built-in Presets:**
-- Feedback Spiral — Classic video feedback with zoom and rotation
-- Wobbulator — Paik/Abe style scan distortion
-- Rutt/Etra Terrain — Z-axis displacement creating 3D terrain
-- VHS Memory — Degraded VHS tape aesthetic
-- Colorizer Bands — Jones-style threshold colorization
-- Noise Meditation — Slow-moving noise patterns
-
-**Implementation:**
-- Single 600-line WGSL shader (`lite.wgsl`)
-- 256-byte uniform buffer covering all parameters
-- Ping-pong texture feedback system
-- egui UI with stage tabs
-
-### Design Philosophy
-
-**Why Two Apps?**
-
-| Aspect | phosphlux | phosphlux-lite |
-|--------|-----------|----------------|
-| Target | Power users, accuracy | Casual users, exploration |
-| Architecture | Dynamic node graph | Fixed 7-stage pipeline |
-| Complexity | Learn device patching | Just tweak sliders |
-| Shader | Composed per-topology | Single fixed shader |
-| Use Case | Authentic emulation | Visual experimentation |
-
-Phosphlux Lite captures the *aesthetic* of analog video without requiring users to understand signal flow, component physics, or node patching. It's the "preset-heavy" synth to the main app's "modular" approach.
-
-### Files Created
-
-```
-apps/phosphlux-lite/
-├── Cargo.toml
-├── README.md
-├── DEVLOG.md
-├── src/
-│   ├── main.rs         # Window, event loop, egui integration
-│   ├── app.rs          # State, presets, randomize
-│   ├── synth.rs        # Stage structs, GPU uniforms
-│   ├── renderer.rs     # wgpu renderer, feedback textures
-│   ├── ui.rs           # Stage panels, sliders
-│   └── presets.rs      # 6 built-in presets
-└── shaders/
-    └── lite.wgsl       # Fixed-pipeline synthesis
-```
-
-### Testing
-
-Both apps build and run successfully:
-```bash
-cargo build -p phosphlux       # 45 warnings (unused dead code)
-cargo build -p phosphlux-lite  # 4 warnings (unused methods)
-cargo run -p phosphlux-lite --release  # Window opens, synthesis runs
-```
-
-### Future Work (Phosphlux Lite)
-
-- v0.1.1: Window resize handling
-- v0.2: Preset save/load UI
-- v0.3: Webcam input
-- v0.4: MIDI learn
-- v0.5: Audio reactivity
+- Cleaner project structure
+- Shared dependency versions
+- Ready for future expansion
 
 ---
 

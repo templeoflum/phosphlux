@@ -1,0 +1,7 @@
+{
+  "name": "ped_colorizer_validated",
+  "device": "paik_abe_ped_colorizer",
+  "description": "PED Colorizer VALIDATED. Classic Paik/Abe 4-window colorization: blue shadows, magenta low-mids, yellow high-mids, cyan highlights. CA3019 amplitude detection working correctly.",
+  "timestamp": "2026-01-29T03:27:01.050761",
+  "image_file": "ped_colorizer_validated_20260129_032701.png"
+}

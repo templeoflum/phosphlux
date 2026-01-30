@@ -1,0 +1,7 @@
+{
+  "name": "folding_amp_validated",
+  "device": "paik_abe_folding_amp",
+  "description": "Folding Amp VALIDATED. Max settings (gain=8, depth=5). Shows correct wavefolder behavior: multiple fold bands, density increasing with input brightness, soft compression at peaks.",
+  "timestamp": "2026-01-29T03:23:14.008784",
+  "image_file": "folding_amp_validated_20260129_032314.png"
+}

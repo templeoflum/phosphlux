@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "apps/phosphlux",
-    "apps/phosphlux-lite",
 ]
 
 [workspace.package]

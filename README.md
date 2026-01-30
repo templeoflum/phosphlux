@@ -54,30 +54,6 @@ Each patch topology generates specialized WGSL shaders at edit-time:
 - Parameter uniform buffer updated per-frame without recompilation
 - Reusable `ShaderDevice` trait for adding new devices
 
-## Project Structure
-
-Phosphlux is a Cargo workspace containing two applications:
-
-| App | Description |
-|-----|-------------|
-| **phosphlux** | Full node-graph video synthesizer with dynamic shader composition |
-| **phosphlux-lite** | Simple fixed-pipeline synthesizer for immediate playability |
-
-```
-phosphlux/
-├── apps/
-│   ├── phosphlux/          # Node-graph synthesizer (main app)
-│   │   └── src/
-│   └── phosphlux-lite/     # Fixed 7-stage pipeline (simple app)
-│       ├── src/
-│       └── shaders/
-├── tools/
-│   ├── research-orchestrator/   # MCP server for document retrieval
-│   └── device-workbench/        # Real-time shader testing
-└── research/
-    └── components/              # IC models and datasheets
-```
-
 ## Requirements
 
 - Rust 1.75 or later
@@ -91,23 +67,9 @@ phosphlux/
 git clone https://github.com/templeoflum/phosphlux.git
 cd phosphlux
 
-# Run the full node-graph synthesizer
-cargo run -p phosphlux --release
-
-# Or run the simple fixed-pipeline version
-cargo run -p phosphlux-lite --release
+# Build and run
+cargo run --release
 ```
-
-## Phosphlux Lite
-
-For users who want to explore video synthesis without learning node patching, **Phosphlux Lite** provides a streamlined experience:
-
-- **7-stage fixed pipeline**: INPUT → GEOMETRY → AMPLITUDE → COLORIZE → MIXER → FEEDBACK → OUTPUT
-- **Built-in presets**: Feedback Spiral, Wobbulator, Rutt/Etra Terrain, VHS Memory, and more
-- **Randomize button**: Instant parameter chaos
-- **Output modes**: Clean, CRT, VHS, Cable degradation
-
-See [apps/phosphlux-lite/README.md](apps/phosphlux-lite/README.md) for details.
 
 ## Usage
 
