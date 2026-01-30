@@ -1,0 +1,7 @@
+{
+  "name": "output_warm",
+  "device": "output_encoder",
+  "description": "Output encoder with warm bias - thermal drift adds red, reduces blue",
+  "timestamp": "2026-01-29T23:04:40.469214",
+  "image_file": "output_warm_20260129_230440.png"
+}

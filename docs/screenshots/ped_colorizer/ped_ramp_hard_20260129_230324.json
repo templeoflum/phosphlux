@@ -1,0 +1,7 @@
+{
+  "name": "ped_ramp_hard",
+  "device": "ped_colorizer",
+  "description": "PED colorizer with hard edges (softness=0) - shows posterized bands",
+  "timestamp": "2026-01-29T23:03:24.672621",
+  "image_file": "ped_ramp_hard_20260129_230324.png"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "output_neutral",
+  "device": "output_encoder",
+  "description": "Output encoder with neutral warmth - shows LM741 saturation compression",
+  "timestamp": "2026-01-29T23:04:30.848300",
+  "image_file": "output_neutral_20260129_230430.png"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "fold_gain2",
+  "device": "folding_amp",
+  "description": "Folding amp with gain=2, showing single fold on ramp",
+  "timestamp": "2026-01-29T23:00:13.274333",
+  "image_file": "fold_gain2_20260129_230013.png"
+}
