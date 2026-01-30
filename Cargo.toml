@@ -1,17 +1,19 @@
-[package]
-name = "phosphlux"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+members = [
+    "apps/phosphlux",
+    "apps/phosphlux-lite",
+]
+
+[workspace.package]
 edition = "2024"
-description = "Phosphlux - Real-time GPU analog video synthesizer and CRT emulation"
 license = "MIT"
 repository = "https://github.com/templeoflum/phosphlux"
-keywords = ["video-synthesis", "wgpu", "analog", "graphics", "real-time"]
-categories = ["graphics", "multimedia", "rendering"]
 
-[dependencies]
+[workspace.dependencies]
 # GPU compute - must match egui-wgpu's wgpu version
 wgpu = "23"
-pollster = "0.4"              # Block on async for wgpu
+pollster = "0.4"
 
 # Windowing
 winit = "0.30"
@@ -22,13 +24,13 @@ egui-wgpu = "0.30"
 egui-winit = "0.30"
 
 # Math
-glam = "0.29"                 # Fast vector math
-bytemuck = { version = "1.14", features = ["derive"] }  # Safe transmutes for GPU buffers
+glam = "0.29"
+bytemuck = { version = "1.14", features = ["derive"] }
 
 # Timing
 instant = "0.1"
 
-# Serialization (for presets/patches)
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

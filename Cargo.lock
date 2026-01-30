@@ -1624,6 +1624,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "phosphlux-lite"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "env_logger",
+ "glam",
+ "instant",
+ "log",
+ "pollster",
+ "serde",
+ "serde_json",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
