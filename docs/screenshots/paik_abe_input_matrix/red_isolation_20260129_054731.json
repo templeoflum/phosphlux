@@ -1,0 +1,7 @@
+{
+  "name": "red_isolation",
+  "device": "paik_abe_input_matrix",
+  "description": "Red channel isolation - r_mix=2, g_mix=0, b_mix=0",
+  "timestamp": "2026-01-29T05:47:31.944088",
+  "image_file": "red_isolation_20260129_054731.png"
+}

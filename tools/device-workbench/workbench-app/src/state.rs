@@ -23,6 +23,9 @@ impl ParamDef {
     }
 }
 
+/// Number of input channels supported (matches Paik/Abe 7-input mixer)
+pub const NUM_INPUT_CHANNELS: usize = 7;
+
 /// Main application state shared between render loop and API
 #[derive(Debug)]
 pub struct AppState {
@@ -35,8 +38,8 @@ pub struct AppState {
     // Parameters
     pub params: HashMap<String, ParamDef>,
 
-    // Images
-    pub input_image: Option<Vec<u8>>,      // PNG bytes
+    // Images - 7 input channels for matrix mixer support
+    pub input_images: [Option<Vec<u8>>; NUM_INPUT_CHANNELS],  // PNG bytes per channel
     pub reference_image: Option<Vec<u8>>,  // PNG bytes
     pub output_image: Option<Vec<u8>>,     // Last rendered frame
 
@@ -60,7 +63,7 @@ impl AppState {
 
             params: Self::default_params(),
 
-            input_image: None,
+            input_images: Default::default(),  // [None; 7]
             reference_image: None,
             output_image: None,
 
@@ -123,10 +126,11 @@ impl Default for AppState {
     }
 }
 
-/// Default passthrough shader
+/// Default passthrough shader (7-input layout)
 pub const DEFAULT_SHADER: &str = r#"
 // Default passthrough shader
-// Replace this with your device emulation shader
+// Uses 7-input binding layout for matrix mixer compatibility
+// Bindings: 0-6 = input textures, 7 = sampler, 8 = params
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -142,7 +146,6 @@ struct Params {
     frequency: f32,
     phase: f32,
     threshold: f32,
-    // Padding to reach 64 bytes (16-byte aligned)
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
@@ -153,13 +156,23 @@ struct Params {
     _pad7: f32,
 };
 
-@group(0) @binding(0) var input_texture: texture_2d<f32>;
-@group(0) @binding(1) var input_sampler: sampler;
-@group(0) @binding(2) var<uniform> params: Params;
+// 7 input textures (default shader only uses input0)
+@group(0) @binding(0) var input0: texture_2d<f32>;
+@group(0) @binding(1) var input1: texture_2d<f32>;
+@group(0) @binding(2) var input2: texture_2d<f32>;
+@group(0) @binding(3) var input3: texture_2d<f32>;
+@group(0) @binding(4) var input4: texture_2d<f32>;
+@group(0) @binding(5) var input5: texture_2d<f32>;
+@group(0) @binding(6) var input6: texture_2d<f32>;
+
+// Shared sampler (binding 7)
+@group(0) @binding(7) var input_sampler: sampler;
+
+// Parameters (binding 8)
+@group(0) @binding(8) var<uniform> params: Params;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    // Full-screen triangle
     var positions = array<vec2<f32>, 3>(
         vec2<f32>(-1.0, -1.0),
         vec2<f32>(3.0, -1.0),
@@ -180,7 +193,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(input_texture, input_sampler, input.uv);
+    let color = textureSample(input0, input_sampler, input.uv);
 
     // Simple gain/offset processing
     var processed = color.rgb * params.gain + params.offset;

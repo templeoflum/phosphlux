@@ -1,0 +1,7 @@
+{
+  "name": "default_colorbars",
+  "device": "paik_abe_input_matrix",
+  "description": "Default pass-through with gain=1, g_mix=1, b_mix=1, rotation=0",
+  "timestamp": "2026-01-29T05:47:24.007133",
+  "image_file": "default_colorbars_20260129_054724.png"
+}

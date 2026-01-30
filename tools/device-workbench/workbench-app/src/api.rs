@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -17,7 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 use crate::diff;
-use crate::state::{AppState, ParamDef};
+use crate::state::{AppState, ParamDef, NUM_INPUT_CHANNELS};
 
 type SharedState = Arc<RwLock<AppState>>;
 
@@ -37,7 +37,8 @@ pub async fn run_server(state: SharedState, port: u16) -> Result<()> {
         .route("/shader", post(load_shader))
         // Images
         .route("/reference", get(get_reference).post(load_reference))
-        .route("/input", post(load_input))
+        .route("/input", post(load_input))           // Load to channel 0 (backwards compat)
+        .route("/input/:index", post(load_input_indexed))  // Load to specific channel 0-6
         // Screenshots
         .route("/screenshot", get(screenshot))
         .route("/screenshot/ui", get(screenshot_ui))
@@ -274,10 +275,37 @@ async fn load_reference(
 }
 
 async fn load_input(State(state): State<SharedState>, Json(req): Json<ImageRequest>) -> Response {
+    // Backwards compatible: load to channel 0
+    load_input_to_channel(state, 0, req).await
+}
+
+async fn load_input_indexed(
+    State(state): State<SharedState>,
+    Path(index): Path<usize>,
+    Json(req): Json<ImageRequest>,
+) -> Response {
+    if index >= NUM_INPUT_CHANNELS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                status: "error".to_string(),
+                error: format!("Input index {} out of range (0-{})", index, NUM_INPUT_CHANNELS - 1),
+            }),
+        )
+            .into_response();
+    }
+    load_input_to_channel(state, index, req).await
+}
+
+async fn load_input_to_channel(
+    state: SharedState,
+    index: usize,
+    req: ImageRequest,
+) -> Response {
     match BASE64.decode(&req.image) {
         Ok(data) => {
             let mut s = state.write();
-            s.input_image = Some(data);
+            s.input_images[index] = Some(data);
 
             Json(SuccessResponse {
                 status: "ok".to_string(),

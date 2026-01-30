@@ -1,0 +1,7 @@
+{
+  "name": "blue_isolation",
+  "device": "paik_abe_input_matrix",
+  "description": "Blue channel isolation - r_mix=0, g_mix=0, b_mix=2",
+  "timestamp": "2026-01-29T05:47:46.219574",
+  "image_file": "blue_isolation_20260129_054746.png"
+}

@@ -212,6 +212,13 @@ async def list_tools():
                     "custom_path": {
                         "type": "string",
                         "description": "Path to custom input image (overrides signal_type)"
+                    },
+                    "input_index": {
+                        "type": "integer",
+                        "description": "Input channel index (0-6) for 7-input matrix mixer. Defaults to 0.",
+                        "minimum": 0,
+                        "maximum": 6,
+                        "default": 0
                     }
                 },
             }
@@ -483,6 +490,7 @@ async def handle_inject_signal(args: dict):
     """Inject test signal."""
     signal_type = args.get("signal_type", "ramp_h")
     custom_path = args.get("custom_path")
+    input_index = args.get("input_index", 0)
 
     if custom_path:
         with open(custom_path, "rb") as f:
@@ -501,14 +509,17 @@ async def handle_inject_signal(args: dict):
             image_data = base64.b64encode(f.read()).decode()
         source = signal_type
 
+    # Use indexed endpoint for multi-input support
+    endpoint = f"/input/{input_index}" if input_index > 0 else "/input"
     result = await workbench_request(
-        "POST", "/input",
+        "POST", endpoint,
         json={"image": image_data}
     )
 
+    channel_info = f" (channel {input_index})" if input_index > 0 else ""
     return [TextContent(
         type="text",
-        text=f"[OK] Injected test signal: {source}"
+        text=f"[OK] Injected test signal: {source}{channel_info}"
     )]
 
 

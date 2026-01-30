@@ -1,0 +1,7 @@
+{
+  "name": "input_matrix_validated",
+  "device": "paik_abe_input_matrix",
+  "description": "Input Matrix VALIDATED. R-only mix shows CA3054 behavior - pink/teal alternation from fixed inv_luma and luma\u00b2 contributions.",
+  "timestamp": "2026-01-29T03:25:36.995321",
+  "image_file": "input_matrix_validated_20260129_032536.png"
+}

@@ -7,7 +7,7 @@ use std::time::Instant;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::state::AppState;
+use crate::state::{AppState, NUM_INPUT_CHANNELS};
 
 /// Main renderer struct
 pub struct Renderer {
@@ -23,11 +23,14 @@ pub struct Renderer {
     bind_group: Option<wgpu::BindGroup>,
     bind_group_layout: wgpu::BindGroupLayout,
 
-    // Resources
-    input_texture: wgpu::Texture,
-    input_view: wgpu::TextureView,
+    // Resources - 7 input textures for matrix mixer support
+    input_textures: [wgpu::Texture; NUM_INPUT_CHANNELS],
+    input_views: [wgpu::TextureView; NUM_INPUT_CHANNELS],
     sampler: wgpu::Sampler,
     params_buffer: wgpu::Buffer,
+
+    // Track which inputs need updating
+    input_dirty: [bool; NUM_INPUT_CHANNELS],
 
     // Readback for screenshots
     output_texture: wgpu::Texture,
@@ -102,79 +105,93 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        // Create bind group layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Workbench Bind Group Layout"),
-            entries: &[
-                // Input texture
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
+        // Create bind group layout with 7 input textures
+        // Layout: bindings 0-6 = input textures, 7 = sampler, 8 = params
+        let mut layout_entries = Vec::with_capacity(NUM_INPUT_CHANNELS + 2);
+
+        // Input textures (bindings 0-6)
+        for i in 0..NUM_INPUT_CHANNELS {
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: i as u32,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
-                // Sampler
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                // Params uniform
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
+                count: None,
+            });
+        }
+
+        // Sampler (binding 7)
+        layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: NUM_INPUT_CHANNELS as u32,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
         });
 
-        // Create default input texture (512x512 gray)
+        // Params uniform (binding 8)
+        layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: (NUM_INPUT_CHANNELS + 1) as u32,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Workbench Bind Group Layout (7-input)"),
+            entries: &layout_entries,
+        });
+
+        // Create 7 input textures (512x512 gray default)
         let tex_size = wgpu::Extent3d {
             width: 512,
             height: 512,
             depth_or_array_layers: 1,
         };
 
-        let input_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Input Texture"),
-            size: tex_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
+        let gray_data: Vec<u8> = vec![128, 128, 128, 255].repeat(512 * 512);
+
+        let input_textures: [wgpu::Texture; NUM_INPUT_CHANNELS] = std::array::from_fn(|i| {
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(&format!("Input Texture {}", i)),
+                size: tex_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+
+            // Initialize with gray
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &gray_data,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(512 * 4),
+                    rows_per_image: Some(512),
+                },
+                tex_size,
+            );
+
+            tex
         });
 
-        // Initialize with gray
-        let gray_data: Vec<u8> = vec![128, 128, 128, 255].repeat(512 * 512);
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &input_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &gray_data,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(512 * 4),
-                rows_per_image: Some(512),
-            },
-            tex_size,
-        );
-
-        let input_view = input_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let input_views: [wgpu::TextureView; NUM_INPUT_CHANNELS] = std::array::from_fn(|i| {
+            input_textures[i].create_view(&wgpu::TextureViewDescriptor::default())
+        });
 
         // Create sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -231,10 +248,11 @@ impl Renderer {
             pipeline: None,
             bind_group: None,
             bind_group_layout,
-            input_texture,
-            input_view,
+            input_textures,
+            input_views,
             sampler,
             params_buffer,
+            input_dirty: [false; NUM_INPUT_CHANNELS],
             output_texture,
             output_buffer,
             state,
@@ -373,25 +391,8 @@ impl Renderer {
                 cache: None,
             });
 
-        // Create bind group
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Workbench Bind Group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.input_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.params_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        // Create bind group with all 7 input textures
+        let bind_group = self.create_bind_group();
 
         let compile_time = start.elapsed().as_secs_f32() * 1000.0;
 
@@ -413,87 +414,109 @@ impl Renderer {
         Ok(())
     }
 
-    fn update_input_texture(&mut self) {
-        let input_data = {
-            let state = self.state.read();
-            state.input_image.clone()
+    /// Create bind group with all 7 input texture views
+    fn create_bind_group(&self) -> wgpu::BindGroup {
+        let mut entries: Vec<wgpu::BindGroupEntry> = Vec::with_capacity(NUM_INPUT_CHANNELS + 2);
+
+        // Input textures (bindings 0-6)
+        for (i, view) in self.input_views.iter().enumerate() {
+            entries.push(wgpu::BindGroupEntry {
+                binding: i as u32,
+                resource: wgpu::BindingResource::TextureView(view),
+            });
+        }
+
+        // Sampler (binding 7)
+        entries.push(wgpu::BindGroupEntry {
+            binding: NUM_INPUT_CHANNELS as u32,
+            resource: wgpu::BindingResource::Sampler(&self.sampler),
+        });
+
+        // Params (binding 8)
+        entries.push(wgpu::BindGroupEntry {
+            binding: (NUM_INPUT_CHANNELS + 1) as u32,
+            resource: self.params_buffer.as_entire_binding(),
+        });
+
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Workbench Bind Group (7-input)"),
+            layout: &self.bind_group_layout,
+            entries: &entries,
+        })
+    }
+
+    fn update_input_textures(&mut self) {
+        // Collect input data from state
+        let input_data: [Option<Vec<u8>>; NUM_INPUT_CHANNELS] = {
+            let mut state = self.state.write();
+            let data = state.input_images.clone();
+            // Clear to avoid re-uploading
+            for img in state.input_images.iter_mut() {
+                *img = None;
+            }
+            data
         };
 
-        if let Some(data) = input_data {
-            if let Ok(img) = image::load_from_memory(&data) {
-                let rgba = img.to_rgba8();
-                let (width, height) = rgba.dimensions();
+        let mut needs_rebind = false;
 
-                // Recreate texture if size changed
-                if width != self.input_texture.width() || height != self.input_texture.height() {
-                    self.input_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("Input Texture"),
-                        size: wgpu::Extent3d {
+        for (i, data) in input_data.into_iter().enumerate() {
+            if let Some(bytes) = data {
+                if let Ok(img) = image::load_from_memory(&bytes) {
+                    let rgba = img.to_rgba8();
+                    let (width, height) = rgba.dimensions();
+
+                    // Check if texture size changed
+                    let current_width = self.input_textures[i].width();
+                    let current_height = self.input_textures[i].height();
+
+                    if width != current_width || height != current_height {
+                        // Recreate texture with new size
+                        self.input_textures[i] = self.device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some(&format!("Input Texture {}", i)),
+                            size: wgpu::Extent3d {
+                                width,
+                                height,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                            view_formats: &[],
+                        });
+                        self.input_views[i] = self.input_textures[i]
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+                        needs_rebind = true;
+                    }
+
+                    // Upload texture data
+                    self.queue.write_texture(
+                        wgpu::ImageCopyTexture {
+                            texture: &self.input_textures[i],
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &rgba,
+                        wgpu::ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(width * 4),
+                            rows_per_image: Some(height),
+                        },
+                        wgpu::Extent3d {
                             width,
                             height,
                             depth_or_array_layers: 1,
                         },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
-                    self.input_view = self
-                        .input_texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
-
-                    // Rebuild bind group
-                    if let Some(ref _pipeline) = self.pipeline {
-                        self.bind_group =
-                            Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                label: Some("Workbench Bind Group"),
-                                layout: &self.bind_group_layout,
-                                entries: &[
-                                    wgpu::BindGroupEntry {
-                                        binding: 0,
-                                        resource: wgpu::BindingResource::TextureView(
-                                            &self.input_view,
-                                        ),
-                                    },
-                                    wgpu::BindGroupEntry {
-                                        binding: 1,
-                                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                                    },
-                                    wgpu::BindGroupEntry {
-                                        binding: 2,
-                                        resource: self.params_buffer.as_entire_binding(),
-                                    },
-                                ],
-                            }));
-                    }
+                    );
                 }
-
-                self.queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &self.input_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &rgba,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(width * 4),
-                        rows_per_image: Some(height),
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-
-                // Clear the input to avoid re-uploading
-                let mut state = self.state.write();
-                state.input_image = None;
             }
+        }
+
+        // Rebuild bind group if any texture was resized
+        if needs_rebind && self.pipeline.is_some() {
+            self.bind_group = Some(self.create_bind_group());
         }
     }
 
@@ -583,8 +606,8 @@ impl Renderer {
             state.status = "error".to_string();
         }
 
-        // Update input texture if changed
-        self.update_input_texture();
+        // Update input textures if changed
+        self.update_input_textures();
 
         // Update params buffer
         {

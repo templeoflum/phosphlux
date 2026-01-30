@@ -1,0 +1,7 @@
+{
+  "name": "multi_input_test",
+  "device": "paik_abe_input_matrix",
+  "description": "Full 7-input test - Ch0: ramp_h, Ch1: ramp_v, Ch2: colorbars - shows matrix mixing from multiple sources",
+  "timestamp": "2026-01-29T22:25:25.833061",
+  "image_file": "multi_input_test_20260129_222525.png"
+}

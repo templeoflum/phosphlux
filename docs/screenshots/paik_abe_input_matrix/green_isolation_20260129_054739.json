@@ -1,0 +1,7 @@
+{
+  "name": "green_isolation",
+  "device": "paik_abe_input_matrix",
+  "description": "Green channel isolation - r_mix=0, g_mix=2, b_mix=0",
+  "timestamp": "2026-01-29T05:47:39.356904",
+  "image_file": "green_isolation_20260129_054739.png"
+}
