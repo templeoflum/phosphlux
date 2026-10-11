@@ -48,6 +48,12 @@ struct App {
     patch: DevicePatch,
     node_editor: NodeEditor,
 
+    // Focused startup diagnostics (enabled with RUST_LOG=phosphlux=debug).
+    redraw_count: u64,
+    render_count: u64,
+    present_count: u64,
+    diagnostic_tick: std::time::Instant,
+
     // Track preview size for texture resize
     last_preview_size: (u32, u32),
 }
@@ -65,6 +71,10 @@ impl App {
             patch: Self::default_patch(),
             node_editor: NodeEditor::new(),
             last_preview_size: (320, 240),
+            redraw_count: 0,
+            render_count: 0,
+            present_count: 0,
+            diagnostic_tick: std::time::Instant::now(),
         }
     }
 
@@ -133,9 +143,21 @@ impl ApplicationHandler for App {
             self.egui_state = Some(egui_state);
             self.egui_renderer = Some(egui_renderer);
             self.renderer = Some(renderer);
+            // Seed the redraw chain after all rendering state is ready.
+            window.request_redraw();
             self.window = Some(window);
 
             log::info!("Window created with node editor layout");
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.diagnostic_tick.elapsed().as_secs() >= 1 {
+            log::debug!(
+                "Startup frames: redraw={} render={} present={}",
+                self.redraw_count, self.render_count, self.present_count
+            );
+            self.diagnostic_tick = std::time::Instant::now();
         }
     }
 
@@ -145,6 +167,12 @@ impl ApplicationHandler for App {
         _id: WindowId,
         event: WindowEvent,
     ) {
+        if matches!(&event, WindowEvent::RedrawRequested) {
+            self.redraw_count += 1;
+            if self.redraw_count == 1 {
+                log::debug!("First RedrawRequested received");
+            }
+        }
         // Pass events to egui first
         if let Some(state) = &mut self.egui_state {
             if let Some(window) = &self.window {
@@ -193,6 +221,7 @@ impl ApplicationHandler for App {
 
 impl App {
     fn render_frame(&mut self, event_loop: &ActiveEventLoop) {
+        self.render_count += 1;
         let timing = self.sync_gen.get_timing();
 
         // Apply LFO automation before rendering
@@ -274,7 +303,12 @@ impl App {
                 full_output.shapes,
                 window.scale_factor() as f32,
             ) {
-                Ok(_) => {}
+                Ok(_) => {
+                    self.present_count += 1;
+                    if self.present_count == 1 {
+                        log::debug!("First render_with_egui success (submit and present returned)");
+                    }
+                }
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                     renderer.resize(renderer.size);
                 }
