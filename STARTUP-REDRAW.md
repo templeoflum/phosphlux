@@ -2,7 +2,7 @@
 
 T-0071 · 11 October 2026
 
-An explicit startup redraw request starts the previously idle redraw chain on this Mac. The instrumented baseline presented zero frames; the candidate presented continuously on two launches. The node editor and colored radial preview have **not** been visually verified, so the full task remains blocked on that check.
+An explicit startup redraw request starts the previously idle redraw chain on this Mac. The instrumented baseline presented zero frames; the candidate presented continuously on two launches. The node editor and colored radial preview have **not** been visually verified. The amended T-0071 completion criteria exclude that appearance check; it belongs to follow-up T-0072.
 
 ## Change and measurement
 
@@ -130,3 +130,7 @@ Existing modified `Cargo.toml` / `Cargo.lock` and untracked `BASELINE.md`, `BLOC
 No available tool in this session provides direct visual inspection without a screenshot, and the task prohibits screenshots. Continuous successful presentation establishes the scheduling fix, but does not establish that the running window visibly contains the node editor and default colored radial preview. That appearance check remains for Hedawn or an authorized observer; it must not be inferred from passing checks or source expectations.
 
 The existing double-click launcher is `/Users/donovan/work/studio-operations/launchers/Open Phosphlux.command`. A proposed follow-up asks Hedawn to observe the default window, close it, and record the result on the board. All three launches allowed to this worker are exhausted. No further app launches were attempted.
+
+## Scope amendment
+
+On resumption, the amended task packet moved visual confirmation to T-0072 and required no new launches. The retained runtime logs were reread and compared against the complete output quoted above; all three matched exactly. This resumed run did not repeat builds, tests, launches, or shutdown checks. The code still matches scheduling-fix commit `4d113dd`; only the report wording changed to reflect the amended scope.
