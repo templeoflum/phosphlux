@@ -5,7 +5,7 @@
 Real-time GPU analog video synthesizer and CRT emulation, built in Rust with wgpu.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)
+![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)
 ![wgpu](https://img.shields.io/badge/wgpu-23.0-green.svg)
 
 ## Overview
@@ -56,7 +56,7 @@ Each patch topology generates specialized WGSL shaders at edit-time:
 
 ## Requirements
 
-- Rust 1.75 or later
+- Rust 1.85 or later for [edition 2024](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html); inspect the workspace edition with `sed -n '/^\[workspace.package\]/,/^\[/p' Cargo.toml`.
 - GPU with Vulkan, Metal, or DX12 support
 - Windows, macOS, or Linux
 
@@ -234,6 +234,9 @@ See [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) for the v0.13-v1.
 See [docs/HISTORICAL_EMULATION_PLAN.md](docs/HISTORICAL_EMULATION_PLAN.md) for the research-first emulation plan.
 
 ### Building
+
+Run `./check.sh` to build, test and lint with `--locked`, with pass/fail results and warning counts.
+Build output and per-command logs are under `/tmp/phosphlux-check`; any failed step returns a non-zero exit code.
 
 ```bash
 # Debug build
