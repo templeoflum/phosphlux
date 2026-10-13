@@ -57,7 +57,7 @@ Source: [PDF (DAFx-14)](https://dafx14.fau.de/papers/dafx14_kurt_james_werner_a_
 Source: [open-access PDF (Aalto)](https://acris.aalto.fi/ws/portalfiles/portal/41964332/Real_time_guitar_amplifier_emulation.pdf) · [Aalto record](https://research.aalto.fi/en/publications/real-time-guitar-amplifier-emulation-with-deep-learning/)
 
 - **Reference (read):** audio recorded from the real amplifiers (Blackstar HT-5 Metal and Mesa Boogie 5:50 Plus), from an existing dataset. For their own pedal recordings, the authors also recorded the audio interface's own loopback "in order to estimate the effect of the audio interface in the measurement" (§2.5).
-- **Measurements (read):** the error-to-signal ratio, "ESR". It is the energy of the difference divided by the energy of the reference (Eq. 10). During training it is filtered first to emphasise the frequencies that matter to the ear. The test-set ESR is reported without that filter (Table 2). Then a MUSHRA listening test, the ITU-R BS.1534 method with "hidden reference and anchor".
+- **Measurements (read):** the error-to-signal ratio, "ESR". It is the energy of the difference divided by the energy of the reference (Eq. 10). During training it is filtered first to emphasise the frequencies that matter to the ear. The test-set ESR is reported without that filter (Table 2). For the amplifier models, training also adds a separate DC-offset term: "an additional loss function representing the difference in DC offset between the target and neural network output was also included" (§4.2, Eq. 19). The loss is then the sum: "E = E_ESR + E_DC" (Eq. 20). Then a MUSHRA listening test, the ITU-R BS.1534 method with "hidden reference and anchor".
 - **Thresholds (read):** none set in advance. Test ESR ranged from 0.20 % to 4.2 % (Table 2). For MUSHRA: "the mean score is at or above 90, indicating that they were rated as Excellent on average". For the best Mesa models, the subjects "were often unable to hear any difference between the models and the reference". Mean scores ran from 75 to 98 (Table 3).
 - **Screening the judges (read):** 14 people took the test, and "The data of five of the test participants was excluded … as they rated the hidden reference below 90 in more than 15% of the trials."
 - **ESR against hearing (read):** for the HT5M, the WaveNet1 model's ESR was 2.8 % and its mean score 75; the RNN-32 model had a *worse* ESR of 4.2 % and a *better* score of 80 (Tables 2 and 3). A lower number does not always mean a better sound.
@@ -88,7 +88,7 @@ The Universal Audio interview I tried ([Tape Op #69, David Berners](https://tape
 
 1. **Two references, two different jobs.** SPICE checks that the model follows the schematic (approaches 1, 3 and 5). The real unit checks the final claim (approaches 2, 3, 4 and 6). Werner uses both. Chowdhury uses SPICE only because the real pedal cost too much. FAITHFUL.md already makes the same split: ngspice now, the real unit later, and the real unit wins.
 2. **No paper sets a pass mark before testing.** The numbers (1 mV, ESR below 2 %, a mean score of 90) are reported as results and described as "good". The only fixed limits are perceptual ones taken from outside work: ANMR below −10 dB, and BS.1534's screening of listeners.
-3. **When the reference is a real unit, part tolerance is the error allowance.** Holters and Werner put leftover gaps down to part tolerance (±20 % capacitors in the 808) rather than counting them as failures. Brainworx models that spread outright.
+3. **When the reference is a real unit, part tolerance is used to *explain* gaps, not to set a numeric pass band.** Holters (§4) says the deviations from the one real pedal "are easily explained by the tolerances of the physical circuit elements". That is a qualitative explanation. Werner (§11) says the ±20 % capacitors and ±5 % resistors cause variation between units. Neither paper turns those tolerances into an allowed band on the output. Brainworx models the spread as variation between channels, but publishes no pass band either.
 4. **One number is never the whole judgement.** Wright's ESR and MUSHRA rankings disagree. Chowdhury's ESR passes but the paper still names a high-frequency loss. Every paper adds plots, features or listening.
 
 ## What carries over to a video ramp generator (mine; Phosphlux facts linked to the files they come from)
@@ -98,12 +98,16 @@ level that becomes brightness directly. FAITHFUL.md quotes the Visual Cortex man
 
 **Carries over directly**
 - **SPICE as the first reference, with the volt difference over the whole sweep (approach 1).** This is exactly what
-  `faithful/compare.py` does against the T-0278 ngspice run. For scale: Esqueda's model matched SPICE within 1 mV.
-  FAITHFUL.md's raw tolerance is 0.02, which is 20 mV. A 1 mV figure needs a model that follows the same equations
-  as SPICE. Phosphlux's model is a shader formula, so it is not directly comparable.
-- **The real unit wins, and its tolerances set the error allowance (approaches 2, 3 and 6).** For a real Cadet IV, the
-  allowed gap could come from the spread its parts and trimmers allow, not from a number picked once. That would
-  replace guess 1 in FAITHFUL.md for the real-unit stage. It needs the BOM tolerances, which are not gathered here.
+  `faithful/compare.py` does against the T-0278 ngspice run. For scale: Esqueda's simplified analytical models, with diode
+  parameters matched to the SPICE models, came within 1 mV of SPICE. FAITHFUL.md's raw tolerance is 0.02, which is
+  20 mV. Writing the model as a shader does not stop the same voltage comparison. The 1 mV figure still cannot simply
+  be borrowed: it belongs to a different circuit, different modelling assumptions, different parameters and a
+  different input range (−1.5 to 1.5 V).
+- **The real unit wins (approaches 2, 3 and 6).** The audio sources use part tolerance only to explain gaps against a
+  real unit, as set out in common-ground item 3. **Proposal, not established by any source:** for the real-unit stage, the
+  Cadet IV's allowed gap could be an envelope worked out from its parts and trimmer ranges. Getting it means
+  propagating the BOM tolerances through the circuit (for example SPICE runs across the tolerance range), or measuring
+  several units. Neither has been done. Until then, guess 1 in FAITHFUL.md stays a guess.
 - **Comparing features as well as waveforms (approach 3).** Werner checks tuning, timing and transients. The ramp's
   counterparts are start level, peak level, slope, straightness and where the reset falls. FAITHFUL.md's table already
   has these.
@@ -114,11 +118,17 @@ level that becomes brightness directly. FAITHFUL.md quotes the Visual Cortex man
   is about 48 dB below 1 V.
 
 **Carries over only with changes**
-- **ESR (approaches 4 and 5).** It can be computed on a ramp, but it treats a constant offset as just more error. Audio
-  passes through coupling capacitors that remove DC, so audio papers never have to judge a DC offset. In video, DC is
-  brightness. My arithmetic, not run: the Cadet's ≈0.08 grey start against a 0–1 ramp gives
-  ESR ≈ 0.08² ÷ (1/3) ≈ 1.9 %. That is in the range the audio papers call good, yet it is the most visible mismatch
-  in try 1. The per-measure table in FAITHFUL.md is the better tool. ESR could sit beside it as a summary at most.
+- **ESR (approaches 4 and 5).** It can be computed on a ramp, but on its own it folds a constant offset into one error
+  figure along with everything else. Audio does attend to DC: Wright et al. add a separate DC-offset loss term during
+  training (approach 4, Eqs. 19–20). Even so, that term is a training loss, and what they report and judge is ESR and
+  listening. In video, DC level *is* brightness, so offset should be measured and judged on its own, as FAITHFUL.md's
+  offset row does.
+  An illustration with made-up signals, not the ESR of the actual Cadet reference: take an ideal 0–1 ramp and the same
+  ramp shifted up by 0.08. The reference is the shifted ramp, with mean-square energy 1/3 + 0.08 + 0.08² ≈ 0.420.
+  The ESR is then 0.08² ÷ 0.420 ≈ 1.5 %, and Wright's E_DC term is the same again (≈1.5 %, sum ≈3.0 %). The
+  real Cadet ramp also has gain error, so its figure would differ. An offset that size sits inside the ESR range the
+  audio papers report as good, yet it is the most visible mismatch in try 1. The per-measure table in FAITHFUL.md is the
+  better tool. ESR, with or without the DC term, could sit beside it as a summary at most.
 - **Weighting the error by perception.** Audio weights by hearing (pre-emphasis, A-weighting, ANMR). Video would need its
   own weighting, for example in display steps after sRGB. That is guess 2 in FAITHFUL.md. No video-synth source for a
   weighting was found in this task.
