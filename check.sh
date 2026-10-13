@@ -2,10 +2,16 @@
 set -u
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
-export CARGO_TARGET_DIR=/tmp/phosphlux-check/target
+scratch_dir="$PWD/.scratch"
+mkdir -p "$scratch_dir" || exit 1
+if [ ! -f "$scratch_dir/.gitignore" ]; then
+    printf '*\n' >"$scratch_dir/.gitignore" || exit 1
+fi
+check_dir="$scratch_dir/phosphlux-check"
+export CARGO_TARGET_DIR="$check_dir/target"
 export CARGO_TERM_COLOR=never
-mkdir -p /tmp/phosphlux-check || exit 1
-log_dir=$(mktemp -d /tmp/phosphlux-check/run.XXXXXX) || exit 1
+mkdir -p "$check_dir" || exit 1
+log_dir=$(mktemp -d "$check_dir/run.XXXXXX") || exit 1
 failed=0
 
 printf 'Phosphlux check (cargo build/test/clippy --locked)\n'

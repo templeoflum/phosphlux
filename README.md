@@ -236,7 +236,7 @@ See [docs/HISTORICAL_EMULATION_PLAN.md](docs/HISTORICAL_EMULATION_PLAN.md) for t
 ### Building
 
 Run `./check.sh` to build, test and lint with `--locked`, with pass/fail results and warning counts.
-Build output and per-command logs are under `/tmp/phosphlux-check`; any failed step returns a non-zero exit code.
+Build output and per-command logs are under `.scratch/phosphlux-check`; any failed step returns a non-zero exit code.
 
 ```bash
 # Debug build
