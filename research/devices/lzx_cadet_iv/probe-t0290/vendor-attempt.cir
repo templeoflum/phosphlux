@@ -1,0 +1,21 @@
+* Cadet IV J8 H ramp: NTSC assumed timing, R1 at 1.0, unloaded
+.include TL074.301
+.include TL072.301
+.include tl431.mod
+.include circuit.lib
+XPWR vcc vee POWER
+XREF vcc vee m2 MINUS2REF
+VHS hsn 0 PULSE(0 5 0 10n 10n 4.7u 63.556u)
+XH vcc vee m2 hsn jh_ramp jh_inv jh_tri RAMPCH cramp=56n pos=1
+.options method=gear reltol=1e-4
+.tran 20n 1.080452m 953.34u 20n
+.control
+set wr_singlescale
+set wr_vecnames
+run
+let ich = (v(vcc)-v(xh.em))/4.99k
+print v(vcc)[0] v(vee)[0] v(m2)[0] ich[0]
+linearize
+wrdata ramp.dat v(jh_ramp) v(hsn) v(xh.col) ich
+.endc
+.end

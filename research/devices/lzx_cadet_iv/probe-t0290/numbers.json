@@ -1,0 +1,16 @@
+{
+  "samples": 6357,
+  "J8_min_V": 0.00216280396,
+  "J8_max_V": 1.04838481,
+  "slope_V_per_us": 0.01781338470148462,
+  "fit_max_residual_V": 6.576235675766207e-05,
+  "reset_crossings_us": [
+    0.2209948549673689,
+    63.77702337817068
+  ],
+  "measured_reset_period_us": 63.55602852320332,
+  "assumed_sync_period_us": 63.556,
+  "assumed_sync_high_us": 4.7,
+  "charging_interval_us": 58.856,
+  "R44_current_A": 0.00100243322
+}
