@@ -4,7 +4,7 @@
 Usage: python3 -I compare.py   (from anywhere; paths are relative to this file)
 Standard library only. Reads ../results/{line,frame}_ntsc_pos1.0.csv and the app's
 generators.rs / renderer.rs, writes try1_numbers.csv and try1_side_by_side.png here.
-The rules applied are the ones in ../FAITHFUL.md.
+The rules applied are the T-0279 draft of ../FAITHFUL.md (git 115ce3d); T-0293 replaced that page.
 """
 import csv
 import os

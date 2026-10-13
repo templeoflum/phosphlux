@@ -1,0 +1,16 @@
+ntsc trim 0.0 (k=0.333) H: ramp first 0.0281 last 0.3399; slope 5.93 mV/us; straightness 0.00001; ramp+inv 1.0073..1.0074; tri min 0.3255 at col 719 (ramp 0.3399), ends 0.9504/0.3255; resets in picture 0
+    document gate: slope -0.0026 (pass at 0.01); ramp+inv +0.0014 (pass at 0.01)
+ntsc trim 0.0 (k=0.333) V: ramp first 0.0236 last 0.3601; slope 22.15 mV/ms; straightness 0.00001; ramp+inv 1.0066..1.0066; tri min 0.2850 at row 239 (ramp 0.3601), ends 0.9592/0.2850; resets in picture 0
+    document gate: slope -0.0025 (pass at 0.01); ramp+inv +0.0006 (pass at 0.01)
+ntsc trim 0.5 (k=0.666) H: ramp first 0.0562 last 0.6805; slope 11.87 mV/us; straightness 0.00004; ramp+inv 1.0081..1.0082; tri min -0.0005 at col 518 (ramp 0.5060), ends 0.8941/0.3568; resets in picture 0
+    document gate: slope -0.0026 (pass at 0.01); ramp+inv +0.0022 (pass at 0.01); tri zero +0.0040 (pass at 0.01)
+ntsc trim 0.5 (k=0.666) V: ramp first 0.0473 last 0.7208; slope 44.34 mV/ms; straightness 0.00001; ramp+inv 1.0066..1.0066; tri min 0.0025 at row 161 (ramp 0.5010), ends 0.9118/0.4380; resets in picture 0
+    document gate: slope -0.0025 (pass at 0.01); ramp+inv +0.0006 (pass at 0.01); tri zero -0.0010 (pass at 0.01)
+ntsc trim 1.0 (k=1.000) H: ramp first 0.0843 last 1.0211; slope 17.81 mV/us; straightness 0.00006; ramp+inv 1.0089..1.0090; tri min -0.0006 at col 324 (ramp 0.5065), ends 0.8378/1.0393; resets in picture 0
+    document gate: slope -0.0026 (pass at 0.01); ramp+inv +0.0030 (pass at 0.01); tri zero +0.0045 (pass at 0.01)
+ntsc trim 1.0 (k=1.000) V: ramp first 0.0710 last 1.0816; slope 66.53 mV/ms; straightness 0.00002; ramp+inv 1.0066..1.0066; tri min 0.0001 at row 102 (ramp 0.5023), ends 0.8643/1.1610; resets in picture 0
+    document gate: slope -0.0025 (pass at 0.01); ramp+inv +0.0006 (pass at 0.01); tri zero +0.0003 (pass at 0.01)
+pal trim 0.5 (k=0.666) H: ramp first 0.0693 last 0.6857; slope 11.87 mV/us; straightness 0.00005; ramp+inv 1.0081..1.0082; tri min -0.0005 at col 509 (ramp 0.5057), ends 0.8679/0.3673; resets in picture 0
+    document gate: slope -0.0026 (pass at 0.01); ramp+inv +0.0022 (pass at 0.01); tri zero +0.0037 (pass at 0.01)
+pal trim 0.5 (k=0.666) V: ramp first 0.0679 last 0.8823; slope 44.34 mV/ms; straightness 0.00002; ramp+inv 1.0066..1.0066; tri min 0.0005 at row 153 (ramp 0.5021), ends 0.8705/0.7616; resets in picture 0
+    document gate: slope -0.0025 (pass at 0.01); ramp+inv +0.0006 (pass at 0.01); tri zero +0.0001 (pass at 0.01)
