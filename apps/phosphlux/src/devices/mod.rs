@@ -17,9 +17,10 @@ pub mod paik_abe;
 // pub mod sandin_ip;  // TODO
 // pub mod jones;       // TODO
 // pub mod rutt_etra;   // TODO
-// pub mod lzx;         // TODO
+pub mod lzx;
 
 pub use generators::TestSignalGenerator;
+pub use lzx::LzxCadetIv;
 pub use paik_abe::{
     PaikAbeColorizer,
     PaikAbeFoldingAmp,

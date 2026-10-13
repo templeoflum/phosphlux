@@ -9,6 +9,7 @@
 
 use crate::gpu::ShaderDevice;
 use crate::devices::{
+    LzxCadetIv,
     PaikAbeColorizer,
     PaikAbeFoldingAmp,
     PaikAbeInputMatrix,
@@ -60,6 +61,7 @@ impl DeviceEntry {
 pub fn create_device(device_id: &str) -> Option<Box<dyn ShaderDevice>> {
     match device_id {
         "test_signal" => Some(Box::new(TestSignalGenerator::new())),
+        "lzx_cadet_iv" => Some(Box::new(LzxCadetIv::new())),
         // Paik/Abe device chain (in signal flow order)
         "paik_abe_input_matrix" => Some(Box::new(PaikAbeInputMatrix::new())),
         "paik_abe_folding_amp" => Some(Box::new(PaikAbeFoldingAmp::new())),
@@ -82,6 +84,18 @@ pub fn device_categories() -> Vec<DeviceCategory> {
                     device_id: "test_signal",
                     display_name: "Test Signal",
                     validation: ValidationStatus::Validated, // Utility device, not a historical emulation
+                },
+            ],
+        },
+        DeviceCategory {
+            name: "LZX",
+            devices: vec![
+                // First pass from research/devices/lzx_cadet_iv/CIRCUIT.md (T-0374);
+                // not yet compared on the GPU against FAITHFUL.md.
+                DeviceEntry {
+                    device_id: "lzx_cadet_iv",
+                    display_name: "Cadet IV Ramps",
+                    validation: ValidationStatus::NeedsValidation,
                 },
             ],
         },

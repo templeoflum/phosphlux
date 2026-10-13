@@ -1,0 +1,28 @@
+# Cadet IV in the app: first pass (T-0374)
+
+`cadet_iv_six_jacks.png` is the app's Cadet IV device rendered off-screen on the GPU. It is not a
+window screenshot. The patch is composed the way the app composes it (`ShaderComposer::compose_plan`),
+and the frame is drawn at 720×240, the NTSC window that FAITHFUL.md §2 assumes. Both trimmers are at 1.0.
+The six jacks are laid out in panel order:
+
+| | | |
+|---|---|---|
+| J8 H ramp | J6 H inverted | J10 H triangle |
+| J3 V ramp | J2 V inverted | J4 V triangle |
+
+The values are read back as floats and then sRGB-encoded, which is how the app's sRGB surface shows them.
+Values outside 0–1 are clipped in the PNG only.
+
+To make it again (needs a GPU):
+
+    CADET_IV_FRAME=research/devices/lzx_cadet_iv/app/cadet_iv_six_jacks.png \
+      cargo test cadet_iv_gpu_frame -- --ignored --nocapture
+
+The same test checks that the GPU agrees with the CPU model at every pixel (to within 1e-4). The CPU model's own
+tests check it against `faithful/reference_check.txt` within FAITHFUL.md's margins. The device is
+`apps/phosphlux/src/devices/lzx/cadet_iv.rs`, and every formula there cites its CIRCUIT.md stage.
+
+What is not from LZX:
+- The sync widths and the picture window. These are assumed, as in the simulation and in FAITHFUL.md §2.
+- The reset switch's 2.33 Ω. It is fitted to the simulation's V-ramp discharge (CIRCUIT.md Q11: not stated).
+- NTSC only. PAL is in the CPU model but not in the app.

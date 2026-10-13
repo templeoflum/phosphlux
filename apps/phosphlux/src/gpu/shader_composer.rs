@@ -73,7 +73,13 @@ pub trait ShaderDevice {
     /// Input ports
     fn inputs(&self) -> Vec<Port>;
 
-    /// Output ports
+    /// Output ports.
+    ///
+    /// Port 0 carries `device_{id}_process`'s result. A source device (no inputs) with more
+    /// outputs must also define
+    ///   fn device_{id}_output(uv, time, port: u32, params...) -> vec4<f32>
+    /// which the composer calls for connections from port 1 and up, within one pass.
+    /// Across passes only port 0 is carried (the intermediate texture holds one signal).
     fn outputs(&self) -> Vec<Port>;
 
     /// How this device processes signals.
@@ -878,7 +884,7 @@ impl ShaderComposer {
                             }
                         } else {
                             // Same-segment input
-                            format!("signal_{}", conn.from_device)
+                            Self::same_pass_signal(patch, conn)
                         };
 
                         // Apply cable degradation based on connection type
@@ -999,7 +1005,7 @@ impl ShaderComposer {
                             }
                         } else {
                             // Same-segment input
-                            format!("signal_{}", conn.from_device)
+                            Self::same_pass_signal(patch, conn)
                         };
 
                         // Apply cable degradation based on connection type
@@ -1308,7 +1314,7 @@ impl ShaderComposer {
                 let mut found = false;
                 for conn in &patch.connections {
                     if conn.to_device == device.instance_id && conn.to_port == input.name {
-                        let raw_signal = format!("signal_{}", conn.from_device);
+                        let raw_signal = Self::same_pass_signal(patch, conn);
                         let degraded_signal =
                             Self::apply_cable_degradation(&raw_signal, &conn.cable_type);
                         input_args.push(degraded_signal);
@@ -1364,6 +1370,41 @@ impl ShaderComposer {
     }
 
     // ─── Utilities ───────────────────────────────────────────
+
+    /// WGSL for the signal on `conn`'s source port, when the source runs in the same pass.
+    /// Port 0 is the device's `signal_{id}`; a later port of a multi-output device is
+    /// evaluated with `device_{id}_output` (see `ShaderDevice::outputs`).
+    fn same_pass_signal(patch: &DevicePatch, conn: &Connection) -> String {
+        if let Some(src) = patch.get_device(conn.from_device) {
+            let port = src
+                .device
+                .outputs()
+                .iter()
+                .position(|p| p.name == conn.from_port);
+            if let Some(port) = port.filter(|&i| i > 0) {
+                let params: String = src
+                    .device
+                    .parameters()
+                    .iter()
+                    .map(|p| {
+                        format!(
+                            ", params.{}_{}_{}",
+                            src.device.device_id(),
+                            src.instance_id,
+                            p.name
+                        )
+                    })
+                    .collect();
+                return format!(
+                    "device_{}_output(uv, time, {}u{})",
+                    src.device.device_id(),
+                    port,
+                    params
+                );
+            }
+        }
+        format!("signal_{}", conn.from_device)
+    }
 
     /// Resolve instance_id to device index
     fn instance_to_index(patch: &DevicePatch, instance_id: u32) -> Option<usize> {

@@ -2,6 +2,8 @@
 //!
 //! v2 architecture: compose device shaders at compile time
 
+#[cfg(test)]
+pub mod offscreen;
 pub mod renderer;
 pub mod shader_composer;
 
