@@ -90,10 +90,9 @@ def main():
             # The triangle-zero check applies when the ramp crosses the derived zero inside the picture.
             # Applicability comes from the ramp's range, not from the triangle, so a bad triangle cannot hide it.
             if min(ramp) <= TRI_ZERO <= max(ramp):
-                if tri[m] > LEVEL_MARGIN:
-                    gate.append(f"tri zero FAIL: ramp crosses {TRI_ZERO} V but the triangle's lowest level is {tri[m]:.4f}")
-                else:
-                    gate.append(judged("tri zero", ramp[m] - TRI_ZERO, LEVEL_MARGIN))
+                # Both are judged: the lowest level must be 0 (either sign), and it must fall where the ramp is at the zero.
+                gate.append(judged("tri lowest level", tri[m], LEVEL_MARGIN))
+                gate.append(judged("tri zero", ramp[m] - TRI_ZERO, LEVEL_MARGIN))
             else:
                 gate.append(f"tri zero n/a: ramp spans {min(ramp):.4f}..{max(ramp):.4f} V, never reaching {TRI_ZERO} V")
             out.append(

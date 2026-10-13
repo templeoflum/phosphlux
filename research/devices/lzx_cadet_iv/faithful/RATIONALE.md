@@ -21,10 +21,11 @@ within the margins in §2. REF reports the check for each of the 8 runs:
 - **Ramp plus inverted ramp:** the derived value is 1.006 V (CIR stage 8, Q7). Checked in all 8 cases, at most 0.0030 off.
 - **Triangle zero:** the derived value is a ramp of 0.502 V (CIR stage 9, Q8). This check applies only when the ramp crosses
   0.502 V inside the picture. That is decided from the ramp's range, so a broken triangle cannot hide it. If the
-  ramp crosses but the triangle does not reach 0, the check fails. Here it applies in 6 cases and is at most
-  0.0045 off. It does not apply in the 2 trimmer-0.0 cases: their ramps reach only 0.340 V (H) and 0.360 V (V),
+  ramp crosses, two things are judged. The triangle's lowest level must be within ±0.010 of 0, on either side.
+  The ramp's level at that lowest pixel must be within ±0.010 V of 0.502 V. Here it applies in 6 cases: the lowest
+  level is at most 0.0025 from 0, and the position is at most 0.0045 V off. It does not apply in the 2 trimmer-0.0 cases: their ramps reach only 0.340 V (H) and 0.360 V (V),
   so they never get to 0.502 V (CIR Q8, the "peak below 0.502 V" case).
-- *Checked here:* adding 0.1 to the triangle of one run in a scratch copy made the check report "tri zero FAIL".
+- *Checked here:* in scratch copies, adding +0.1 or −0.1 to one run's triangle made the check report "tri lowest level +0.0994 (FAIL)" and "−0.1006 (FAIL)".
 
 **Why not the documents alone.**
 - No source gives a figure for straightness, the reset, the calibrated peak, noise or spread (CIR Q2, Q6, Q11, Q16).
