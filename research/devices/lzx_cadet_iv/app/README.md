@@ -26,3 +26,8 @@ What is not from LZX:
 - The sync widths and the picture window. These are assumed, as in the simulation and in FAITHFUL.md §2.
 - The reset switch's 2.33 Ω. It is fitted to the simulation's V-ramp discharge (CIRCUIT.md Q11: not stated).
 - NTSC only. PAL is in the CPU model but not in the app.
+
+Patching a jack into a scan modulator (for example the Wobulator, which runs in its own pass) hands on
+that jack, not the first one (fixed after the T-0374 check). `each_jack_reaches_a_scan_modulator` checks
+the composed passes. `cadet_iv_gpu_into_wobulator` (ignored, needs a GPU) reads back the texture the
+Wobulator samples for each of the six jacks.

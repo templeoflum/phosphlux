@@ -503,6 +503,64 @@ mod tests {
         }
     }
 
+    /// Cadet IV jack `jack` patched straight into the Wobulator (a scan modulator, so a second pass).
+    fn into_wobulator(jack: &str) -> crate::gpu::DevicePatch {
+        let mut patch = crate::gpu::DevicePatch::new();
+        let cadet = patch.add_device(Box::new(LzxCadetIv::new()), 0.0, 0.0);
+        let wob = patch.add_device(Box::new(crate::devices::PaikAbeWobulator::new()), 0.0, 100.0);
+        patch.connect(cadet, jack, wob, "video_in");
+        patch.output_device = wob;
+        patch
+    }
+
+    /// Verifier finding on T-0374: across a pass boundary every jack arrived as the H ramp.
+    /// The pass feeding the Wobulator must now hand on the jack that was patched.
+    #[test]
+    fn each_jack_reaches_a_scan_modulator() {
+        let composer = crate::gpu::ShaderComposer::new();
+        let mut first_passes = Vec::new();
+        for (port, jack) in JACKS.iter().enumerate() {
+            let plan = composer.compose_plan(&into_wobulator(jack)).expect("compose");
+            assert_eq!(plan.segments.len(), 2, "{jack}: Cadet pass, then Wobulator pass");
+            let wgsl = &plan.segments[0].wgsl_source;
+            let returns = if port == 0 {
+                "return signal_0;".to_string()
+            } else {
+                format!("return device_lzx_cadet_iv_output(uv, time, {port}u, ")
+            };
+            assert!(wgsl.contains(&returns), "{jack}: first pass should end with {returns:?}");
+            first_passes.push(wgsl.clone());
+        }
+        for i in 0..6 {
+            for j in i + 1..6 {
+                assert_ne!(first_passes[i], first_passes[j], "{} and {} route the same", JACKS[i], JACKS[j]);
+            }
+        }
+    }
+
+    /// GPU readback of the pass the Wobulator samples, for each jack, against the CPU model.
+    ///   cargo test cadet_iv_gpu_into_wobulator -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn cadet_iv_gpu_into_wobulator() {
+        use crate::gpu::offscreen::render_segment_f32;
+        let (w, h) = (720u32, 240u32);
+        let model = CadetIvModel { std: NTSC, h_adj: 1.0, v_adj: 1.0 };
+        for (port, jack) in JACKS.iter().enumerate() {
+            let patch = into_wobulator(jack);
+            let plan = crate::gpu::ShaderComposer::new().compose_plan(&patch).expect("compose");
+            let px = render_segment_f32(&patch, &plan.segments[0], w, h).expect("render");
+            let mut worst = 0.0f64;
+            for (i, p) in px.iter().enumerate() {
+                let (x, y) = ((i as u32 % w) as f64, (i as u32 / w) as f64);
+                let want = model.jacks((x + 0.5) / w as f64, (y + 0.5) / h as f64)[port];
+                worst = worst.max((p[0] as f64 - want).abs());
+            }
+            println!("{jack} -> Wobulator input texture: max diff from CPU model {worst:.6}");
+            assert!(worst < 1e-4, "{jack}: texture into the Wobulator is not this jack ({worst})");
+        }
+    }
+
     #[test]
     fn device_has_six_jacks_and_two_trimmers() {
         let d = LzxCadetIv::new();

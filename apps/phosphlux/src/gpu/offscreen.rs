@@ -6,16 +6,29 @@
 
 use wgpu::util::DeviceExt;
 
-use crate::gpu::{DevicePatch, SegmentKind, ShaderComposer};
+use crate::gpu::{DevicePatch, SegmentKind, SegmentShader, ShaderComposer};
 
 /// Render `patch` at `width`×`height`; returns row-major RGBA floats (top row first).
 /// Single-pass patches only. Errors are returned as text so a test can report them.
 pub fn render_patch_f32(patch: &DevicePatch, width: u32, height: u32) -> Result<Vec<[f32; 4]>, String> {
     let plan = ShaderComposer::new().compose_plan(patch).map_err(|e| e.to_string())?;
-    if plan.segments.len() != 1 || plan.segments[0].kind != SegmentKind::Composed {
-        return Err(format!("expected one composed segment, got {}", plan.segments.len()));
+    if plan.segments.len() != 1 {
+        return Err(format!("expected one segment, got {}", plan.segments.len()));
     }
-    let segment = &plan.segments[0];
+    render_segment_f32(patch, &plan.segments[0], width, height)
+}
+
+/// Render one composed segment of a plan on its own (no input textures), e.g. the pass that
+/// feeds a scan modulator, to read back what that pass hands on.
+pub fn render_segment_f32(
+    patch: &DevicePatch,
+    segment: &SegmentShader,
+    width: u32,
+    height: u32,
+) -> Result<Vec<[f32; 4]>, String> {
+    if segment.kind != SegmentKind::Composed || segment.input_texture_count != 0 {
+        return Err("only a composed segment with no input textures can render alone".into());
+    }
 
     let instance = wgpu::Instance::default();
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))

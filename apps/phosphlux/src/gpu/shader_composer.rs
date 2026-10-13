@@ -78,8 +78,8 @@ pub trait ShaderDevice {
     /// Port 0 carries `device_{id}_process`'s result. A source device (no inputs) with more
     /// outputs must also define
     ///   fn device_{id}_output(uv, time, port: u32, params...) -> vec4<f32>
-    /// which the composer calls for connections from port 1 and up, within one pass.
-    /// Across passes only port 0 is carried (the intermediate texture holds one signal).
+    /// which the composer calls for connections from port 1 and up. Within a pass it is called
+    /// inline; a scan modulator reading such a port gets it as the previous pass's texture.
     fn outputs(&self) -> Vec<Port>;
 
     /// How this device processes signals.
@@ -515,12 +515,14 @@ impl ShaderComposer {
                 ProcessingMode::ScanModulator => {
                     // Finalize current pixel processor group (if non-empty)
                     if !current_group.is_empty() {
+                        let export = Self::scan_input_jack(patch, device, &current_group);
                         let segment = self.build_composed_segment(
                             patch,
                             &current_group,
                             segment_count > 0, // needs input texture if not first segment
                             &all_prev_device_ids,
                             &device_to_segment,
+                            export.as_deref(),
                         )?;
                         // Record which segment produces each device in this group
                         for &idx in &current_group {
@@ -555,6 +557,7 @@ impl ShaderComposer {
                 segment_count > 0,
                 &all_prev_device_ids,
                 &device_to_segment,
+                None,
             )?;
             segments.push(segment);
         }
@@ -581,6 +584,7 @@ impl ShaderComposer {
         needs_input_texture: bool,
         prev_device_ids: &HashSet<u32>,
         device_to_segment: &HashMap<u32, usize>,
+        export: Option<&str>,
     ) -> Result<SegmentShader, ComposeError> {
         let mut wgsl = String::new();
 
@@ -679,6 +683,7 @@ impl ShaderComposer {
             needs_input_texture,
             prev_device_ids,
             &cross_segment_sources,
+            export,
         )?;
         wgsl.push_str("// === MAIN ===\n");
         wgsl.push_str(&main_fn);
@@ -952,6 +957,7 @@ impl ShaderComposer {
         needs_input_texture: bool,
         prev_device_ids: &HashSet<u32>,
         cross_segment_sources: &[u32],
+        export: Option<&str>,
     ) -> Result<String, ComposeError> {
         let mut wgsl = String::new();
 
@@ -1058,7 +1064,11 @@ impl ShaderComposer {
                 patch.devices[*device_indices.last().unwrap()].instance_id
             });
 
-        wgsl.push_str(&format!("\n    return signal_{};\n", output_id));
+        match export {
+            // A scan modulator downstream reads a later jack of a multi-output device.
+            Some(expr) => wgsl.push_str(&format!("\n    return {};\n", expr)),
+            None => wgsl.push_str(&format!("\n    return signal_{};\n", output_id)),
+        }
         wgsl.push_str("}\n");
 
         Ok(wgsl)
@@ -1370,6 +1380,21 @@ impl ShaderComposer {
     }
 
     // ─── Utilities ───────────────────────────────────────────
+
+    /// What the pass before `scan_mod` must hand it, when that is not the pass's usual result:
+    /// the scan modulator reads port 1 or later of a multi-output device in `group`.
+    /// `None` keeps the usual result, so patches of single-output devices are unchanged.
+    fn scan_input_jack(patch: &DevicePatch, scan_mod: &DeviceInstance, group: &[usize]) -> Option<String> {
+        let input = scan_mod.device.inputs().into_iter().next()?;
+        let conn = patch
+            .connections
+            .iter()
+            .find(|c| c.to_device == scan_mod.instance_id && c.to_port == input.name)?;
+        let src = patch.get_device(conn.from_device)?;
+        let in_group = group.iter().any(|&i| patch.devices[i].instance_id == conn.from_device);
+        let port = src.device.outputs().iter().position(|p| p.name == conn.from_port)?;
+        (in_group && port > 0).then(|| Self::same_pass_signal(patch, conn))
+    }
 
     /// WGSL for the signal on `conn`'s source port, when the source runs in the same pass.
     /// Port 0 is the device's `signal_{id}`; a later port of a multi-output device is
