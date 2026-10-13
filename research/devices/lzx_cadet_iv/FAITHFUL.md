@@ -1,4 +1,4 @@
-# What "faithful" means for the Cadet IV (proposal, T-0293)
+# What "faithful" means for the Cadet IV (proposal, T-0293; black level changed in T-0345)
 
 For Hedawn to agree to or change. It replaces the T-0279 draft (git `115ce3d`). The full reasons and reference values are in
 [`faithful/RATIONALE.md`](faithful/RATIONALE.md), section by section. Sources:
@@ -6,12 +6,14 @@ For Hedawn to agree to or change. It replaces the T-0279 draft (git `115ce3d`). 
 - **AUD** [`AUDIO_MATCH_PRACTICE.md`](../../validation/AUDIO_MATCH_PRACTICE.md): how audio emulations judge a match
 - **PRB** [`probe-t0290/README.md`](probe-t0290/README.md): the simulation probe on this Mac
 - **REF** [`faithful/reference_check.txt`](faithful/reference_check.txt): the reference values, from `faithful/reference_check.py`
+- **TRY2** [`faithful/TRY2.md`](faithful/TRY2.md): the second comparison, and why the simulation starts grey
 
 **In plain words.** The app's Cadet IV is faithful if each of its six outputs matches a simulation of LZX's schematic at
 every pixel, with the trimmers set the same, to within 10 millivolts. That is 1 % of the signal's range. The simulation
 counts only because it agrees with the values that can be worked out by hand from LZX's documents, and it does. A measured
 real module would beat the simulation. None has been measured, so that is an option, not part of the standard. Noise,
-reset edges and differences between units are left out because no source gives a number for them.
+reset edges and differences between units are left out because no source gives a number for them. One exception to
+following the simulation: each ramp must start at true black, on Hedawn's word, even though the simulated circuit starts grey.
 
 ## 1. Reference
 
@@ -53,16 +55,27 @@ An 8-bit screenshot is not enough. Near white, its rounding is up to 0.0045, nea
 | # | Quantity | Margin (proposed) | Sources |
 |---|---|---|---|
 | 1 | Level at every pixel, all outputs | ≤ 0.010 | CIR stages 3 and 8 (the TL431 spread is about ±5 mV); AUD §6 null test |
-| 2 | Start level, the first column or row of each ramp | ≤ 0.010 | the circuit starts grey (TRY1); AUD on DC offset |
+| 2 | **Black level, must match:** the first column or row of each rising ramp, against 0 V (true black), not against the simulation | ≤ 0.005 (**a guess**, placeholder) | Hedawn, T-0327: "reference clearly has darker blacks"; TRY2 |
 | 3 | Slope, the gain of a straight-line fit | ±1 % | CIR Q3 (current −0.5/+1.3 %); AUD §3 |
 | 4 | Straightness, the largest distance from that line | ≤ 0.004 (one 8-bit step of the linear signal) | CIR Q2 (no figure); PRB (generic transistor) |
 | 5 | Ramp + inverted ramp, at every pixel | ≤ 0.010 from the reference | CIR Q7, Q14 |
 | 6 | Triangle bottom: the ramp's level at the triangle's lowest pixel, and the lowest level | ±0.010 V each | CIR Q8, Q9, stage 10 |
 | 7 | Resets inside the picture | none; otherwise the same pixel ±1 | CIR "Timing"; AUD "Does not carry over" |
 
-A match means every row passes in every condition. The RMS difference is reported but not judged, because it hides an
+A match means every row passes in every condition. Row 2 overrides rows 1 and 5 at the first pixels: there the app is
+judged against black, not against the simulation's grey. The RMS difference is reported but not judged, because it hides an
 offset (AUD item 4). At the screen, 0.010 ranges from about 1 sRGB code near white to about 25 near black, so whether it
 is visible is untested (RATIONALE §2).
+
+**Known difference: the simulated circuit starts grey.** The ramp is released at the end of sync and rises through the back
+porch before the assumed picture starts: 0.0837 V at the first H column and 0.069 V at the first V row, at trimmer 1.0.
+This is in the circuit as drawn (reset driven only by sync, Blanking not connected), not in the simulation or the
+mapping. How grey depends on the assumed picture window, which LZX does not state (TRY2). The simulation therefore
+fails row 2 itself. It is kept as a known difference, not copied into the app.
+
+**Why 0.005 (guess).** It is above the few millivolts the reset leaves (0.0022 H, 0.0055 V in the simulation) and well
+below the 0.07–0.08 grey start. Near black, 0.005 is about 16 sRGB codes (*computed here*), so it may be too loose to
+look black. It has not been tested on a screen.
 
 ## 3. Left out for now
 
@@ -93,4 +106,6 @@ is visible is untested (RATIONALE §2).
 
 1. **The reference:** the simulation checked against the documents (recommended), or add a measured real unit.
 2. **The margins:** 10 mV for levels and ±1 % for slope. The other margins follow from these.
-3. **The grey start:** whether the grey at the left and top edges is part of the circuit, for the app to copy.
+3. **The grey start: answered.** Hedawn, T-0327: "reference clearly has darker blacks". True black is expected, so the
+   grey start is not the standard (row 2). The picture he saw had no labels, and in it the darker column was the app,
+   not the simulation; the new picture is labelled (`faithful/try2_side_by_side.png`).

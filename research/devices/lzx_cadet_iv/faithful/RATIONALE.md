@@ -9,6 +9,7 @@ the sources for each choice. The section numbers match that page. Source keys:
 - **SIM**: [`../README.md`](../README.md) (T-0278)
 - **REF**: [`reference_check.txt`](reference_check.txt), written by `python3 -I reference_check.py`
 - **TRY1**: [`TRY1.md`](TRY1.md)
+- **TRY2**: [`TRY2.md`](TRY2.md) (T-0345)
 
 **Labels.** Every margin is a **proposal**. No source sets a pass mark (AUD item 2), and none turns part tolerances into one
 (AUD item 3). Numbers marked *computed here* are my arithmetic. None of the remarks about what is visible on screen has been tested on a viewer.
@@ -82,7 +83,7 @@ margin. That is why the app's values are read back as floats before encoding.
 | # | Reference now (REF, NTSC trimmer 1.0, H / V) | Why this margin |
 |---|---|---|
 | 1 Level at every pixel ≤ 0.010 | the full curves | The documents fix levels to about ±5 mV. The TL431 spread alone moves the inverted ceiling across 1.001–1.011 V (CIR stages 3 and 8; *computed here*: 2.483 V and 2.507 V × 10/24.8). The simulation leaves out op-amp offsets of a few mV (SIM "What the simulation cannot settle"). Try 1's gap of 0.084 is 8× this margin (TRY1). Esqueda's 1 mV belongs to another circuit and is not borrowed (AUD "Carries over directly"). It is a null test in picture form (AUD §6) |
-| 2 Start level ≤ 0.010 | 0.0843 / 0.0710 | The ramp starts charging when sync ends, before the picture begins, so the left and top edges are grey (TRY1). DC level is brightness, so it is judged on its own (AUD, ESR under "Carries over only with changes"). The value depends on the assumed sync and window |
+| 2 Black level ≤ 0.005 against 0 V (T-0345; the margin is a guess) | 0.0843 / 0.0710, so the simulation itself fails | Changed on Hedawn's word (T-0327): true black is expected, so the first pixel is judged against 0 V, not against the simulation. The grey start is in the circuit as drawn: the ramp is released at the end of sync and rises through the back porch before the assumed picture starts (TRY2). DC level is brightness, so it is judged on its own (AUD, ESR under "Carries over only with changes"). 0.005 sits above the reset's few millivolts (0.0022 H, 0.0055 V) and below the grey start; near black it is about 16 sRGB codes, untested on a screen |
 | 3 Slope ±1 % | 17.81 mV/µs / 66.53 mV/ms | The charging current spans 0.995–1.013 mA (CIR Q3). 1 % of a 1 V ramp is 10 mV, the same as row 1. It is the ramp's counterpart of "tuning" (AUD §3) |
 | 4 Straightness ≤ 0.004 | ≤ 0.00006 in all runs | No source gives a figure (CIR Q2). The simulation's value rests on a generic transistor (PRB), so it is not copied. 0.004 is one 8-bit step of the *linear signal* (1/255), not a screen step. After sRGB it is under one code above mid grey and more near black (about 13 codes at 0). It is about 2.5× tighter than row 1, so curvature is caught separately from offset. Broadcast video calls this luminance nonlinearity (AUD "Does not carry over") |
 | 5 Ramp + inverted ≤ 0.010 from the reference | 1.0089–1.0090 / 1.0066 | The ceiling stays fixed at any trimmer setting (CIR Q7, Q14). This row checks that the inverted output follows the ramp |

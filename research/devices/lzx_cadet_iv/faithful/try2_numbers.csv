@@ -1,0 +1,21 @@
+signal,row,measure,value,margin,pass
+H ramp (J8 vs mode 0),1,max_abs_error,0.0836,0.01,NO
+H ramp (J8 vs mode 0),2,black_level_app_first_px,0.0007,0.005,yes
+H ramp (J8 vs mode 0),2,black_level_ref_first_px,0.0843,0.005,NO
+H ramp (J8 vs mode 0),3,fit_gain_error,-0.0620,0.01,NO
+H ramp (J8 vs mode 0),4,linearity_residual,0.0001,0.004,yes
+H ramp (J8 vs mode 0),7,reset_in_picture_px,0.0000,1,yes
+H ramp (J8 vs mode 0),-,rms_error,0.0557,,
+H ramp (J8 vs mode 0),-,fit_offset,0.0837,,
+H ramp (J8 vs mode 0),-,ref_last_px,1.0211,,
+H ramp (J8 vs mode 0),-,app_last_px,0.9993,,
+V ramp (J3 vs mode 1),1,max_abs_error,0.0837,0.01,NO
+V ramp (J3 vs mode 1),2,black_level_app_first_px,0.0021,0.005,yes
+V ramp (J3 vs mode 1),2,black_level_ref_first_px,0.0710,0.005,NO
+V ramp (J3 vs mode 1),3,fit_gain_error,0.0149,0.01,NO
+V ramp (J3 vs mode 1),4,linearity_residual,0.0000,0.004,yes
+V ramp (J3 vs mode 1),7,reset_in_picture_px,0.0000,1,yes
+V ramp (J3 vs mode 1),-,rms_error,0.0764,,
+V ramp (J3 vs mode 1),-,fit_offset,0.0689,,
+V ramp (J3 vs mode 1),-,ref_last_px,1.0816,,
+V ramp (J3 vs mode 1),-,app_last_px,0.9979,,
