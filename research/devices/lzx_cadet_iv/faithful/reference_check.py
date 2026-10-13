@@ -80,12 +80,22 @@ def main():
             s = [x + y for x, y in zip(ramp, inv)]
             m = min(range(n), key=lambda i: tri[i])
             resets = sum(1 for i in range(1, n) if ramp[i - 1] - ramp[i] > 0.5)
+            def judged(name, val, lim):
+                return f"{name} {val:+.4f} ({'pass' if abs(val) <= lim else 'FAIL'} at {lim})"
+
             gate = [
-                ("slope", slope / want - 1, SLOPE_MARGIN),
-                ("ramp+inv", max(abs(v - INV_CEILING) for v in s), LEVEL_MARGIN),
+                judged("slope", slope / want - 1, SLOPE_MARGIN),
+                judged("ramp+inv", max(abs(v - INV_CEILING) for v in s), LEVEL_MARGIN),
             ]
-            if tri[m] < LEVEL_MARGIN:  # the triangle reaches 0 inside the picture
-                gate.append(("tri zero", ramp[m] - TRI_ZERO, LEVEL_MARGIN))
+            # The triangle-zero check applies when the ramp crosses the derived zero inside the picture.
+            # Applicability comes from the ramp's range, not from the triangle, so a bad triangle cannot hide it.
+            if min(ramp) <= TRI_ZERO <= max(ramp):
+                if tri[m] > LEVEL_MARGIN:
+                    gate.append(f"tri zero FAIL: ramp crosses {TRI_ZERO} V but the triangle's lowest level is {tri[m]:.4f}")
+                else:
+                    gate.append(judged("tri zero", ramp[m] - TRI_ZERO, LEVEL_MARGIN))
+            else:
+                gate.append(f"tri zero n/a: ramp spans {min(ramp):.4f}..{max(ramp):.4f} V, never reaching {TRI_ZERO} V")
             out.append(
                 f"{std} trim {pos} (k={k:.3f}) {ch}: ramp first {ramp[0]:.4f} last {ramp[-1]:.4f}; "
                 f"slope {slope * (1e-6 if ch == 'H' else 1e-3) * 1e3:.2f} mV/{'us' if ch == 'H' else 'ms'}; "
@@ -93,8 +103,7 @@ def main():
                 f"tri min {tri[m]:.4f} at {'col' if ch == 'H' else 'row'} {m} (ramp {ramp[m]:.4f}), "
                 f"ends {tri[0]:.4f}/{tri[-1]:.4f}; resets in picture {resets}"
             )
-            out.append("    document gate: " + "; ".join(
-                f"{name} {val:+.4f} ({'pass' if abs(val) <= lim else 'FAIL'} at {lim})" for name, val, lim in gate))
+            out.append("    document gate: " + "; ".join(gate))
     text = "\n".join(out) + "\n"
     with open(os.path.join(HERE, "reference_check.txt"), "w") as f:
         f.write(text)
