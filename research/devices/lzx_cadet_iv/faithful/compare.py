@@ -72,6 +72,39 @@ def app_value(i, n):
     return (i + 0.5) / n
 
 
+def find_resets(vals):
+    # A reset inside the picture shows as a drop between neighbouring pixels larger than half the range.
+    return [i for i in range(1, len(vals)) if vals[i - 1] - vals[i] > 0.5]
+
+
+def reset_distance(ref_resets, app_resets, n):
+    """Largest pixel distance between matched resets (in order); a missing or extra reset counts as n (fail)."""
+    if len(ref_resets) != len(app_resets):
+        return n
+    return max((abs(r - a) for r, a in zip(ref_resets, app_resets)), default=0)
+
+
+def self_test():
+    n = 8
+    ramp = [i / n for i in range(n)]
+    shifted = lambda k: [((i - k) % n) / n for i in range(n)]  # reset at pixel k
+    cases = [
+        ("none in either", ramp, ramp, 0),
+        ("same pixel", shifted(5), shifted(5), 0),
+        ("1 px shift", shifted(5), shifted(4), 1),
+        ("2 px shift", shifted(5), shifted(3), 2),
+        ("app missing reset", shifted(5), ramp, n),
+        ("app extra reset", ramp, shifted(5), n),
+    ]
+    tol = TOL["reset_in_picture_px"]
+    for name, ref, app, want in cases:
+        got = reset_distance(find_resets(ref), find_resets(app), n)
+        verdict = "pass" if got <= tol else "fail"
+        print(f"self-test {name:18s} distance {got}  -> {verdict}")
+        assert got == want, (name, got, want)
+    print("self-test ok")
+
+
 def measures(ref, app, n):
     err = [r - a for r, a in zip(ref, app)]
     mx = sum(app) / n
@@ -80,10 +113,8 @@ def measures(ref, app, n):
     gain = sum((x - mx) * (y - my) for x, y in zip(app, ref)) / sxx
     offset = my - gain * mx
     resid = [y - (gain * x + offset) for x, y in zip(app, ref)]
-    # A reset inside the picture shows as a drop between neighbouring pixels larger than half the range.
-    ref_resets = [i for i in range(1, n) if ref[i - 1] - ref[i] > 0.5]
-    app_resets = [i for i in range(1, n) if app[i - 1] - app[i] > 0.5]
-    reset_px = 0 if ref_resets == app_resets else max(n, 1)
+    ref_resets, app_resets = find_resets(ref), find_resets(app)
+    reset_px = reset_distance(ref_resets, app_resets, n)
     return {
         "max_abs_error": max(abs(e) for e in err),
         "rms_error": (sum(e * e for e in err) / n) ** 0.5,
@@ -116,6 +147,7 @@ def write_png(path, w, h, rows):
 
 
 def main():
+    self_test()
     app_shader_check()
     lt, lh = read_csv("line_ntsc_pos1.0.csv", "jh_ramp")
     ft, fv = read_csv("frame_ntsc_pos1.0.csv", "jv_ramp")
