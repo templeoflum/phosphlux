@@ -114,3 +114,25 @@ and the triangle's dip moves away from centre. Unit-to-unit spread in real modul
 ## How to rerun
 
 `sh sim/run.sh` runs 8 cases and takes about 30 s on the machine used. Decks and ngspice logs go to `<repo>/.scratch/cadet_iv_runs/`.
+
+## Rerun the whole chain with one command (T-0375)
+
+From the repository root:
+
+    sh research/devices/lzx_cadet_iv/run_all.sh
+
+It needs ngspice, python3, cargo and a GPU, and takes about 1.5 minutes on the machine used. It reruns each step from the committed sources, in order:
+
+| Step | On record in | Output |
+|---|---|---|
+| Documents | `source/` (schematic PDF and BOMs, with hashes above) | — |
+| Circuit page | [`CIRCUIT.md`](CIRCUIT.md), and the netlist `sim/cadet_iv.lib` read from it | — |
+| 1. Simulation | `sim/run.sh` (ngspice) | `results/` |
+| 2. Reference values and document gate | `faithful/reference_check.py` | `faithful/reference_check.txt` |
+| 3. Device, CPU model tests | `apps/phosphlux/src/devices/lzx/cadet_iv.rs` (`cargo test cadet_iv`) | the line in `comparison/report.md` |
+| 4. Device, off-screen GPU render | the ignored test `cadet_iv_gpu_dump` in the same file, composed as the app composes it, read back as unclamped floats | raw floats in `<repo>/.scratch/cadet_iv_app/` (not committed) |
+| 5. Comparison | `faithful/compare_app.py`, with [`FAITHFUL.md`](FAITHFUL.md) section 2's rule and margins | `comparison/` |
+
+`comparison/report.md` gives pass or fail for each check, with the measured value, the margin and the headroom left. `comparison/side_by_side_ntsc_pos<p>.png` shows the six jacks labelled *reference (circuit)*, *app* and *difference* (×25, mid grey = equal). `comparison/numbers.csv` has the same numbers as the report, and `comparison/app_profiles.csv` has the circuit's and the app's value at every column (H jacks) or row (V jacks). A failed check is written into the report and does not stop the script. A step that cannot run (no ngspice, no GPU, a build error) stops it with a non-zero exit.
+
+The committed `comparison/` is one run of this script. Rerunning it reproduced `results/` byte for byte.

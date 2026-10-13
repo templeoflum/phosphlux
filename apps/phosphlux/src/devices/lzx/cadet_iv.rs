@@ -503,6 +503,47 @@ mod tests {
         }
     }
 
+    /// Off-screen render for the comparison with the circuit (T-0375; research/devices/lzx_cadet_iv/run_all.sh).
+    /// For trimmers 0.0, 0.5 and 1.0 (both set together, as in the simulation) and each of the six jacks,
+    /// composes the patch as the app does, renders 720×240 on the GPU and writes the red channel as raw
+    /// little-endian f32, top row first, to `$CADET_IV_DUMP_DIR/ntsc_pos<p>_<jack>.f32`. No judging here:
+    /// faithful/compare_app.py reads these files. Needs a GPU, so it is ignored by default.
+    #[test]
+    #[ignore]
+    fn cadet_iv_gpu_dump() {
+        use crate::gpu::offscreen::{adapter_summary, render_patch_f32};
+        use crate::gpu::DevicePatch;
+        let dir = std::env::var("CADET_IV_DUMP_DIR").expect("set CADET_IV_DUMP_DIR");
+        std::fs::create_dir_all(&dir).expect("dump dir");
+        let (w, h) = (720u32, 240u32);
+        let mut manifest = format!(
+            "adapter: {}\nsize: {w}x{h}\nformat: f32 little-endian, red channel, row-major, top row first\n",
+            adapter_summary().unwrap_or_else(|| "none".into())
+        );
+        for pos in [0.0f32, 0.5, 1.0] {
+            for (port, jack) in JACKS.iter().enumerate() {
+                let mut patch = DevicePatch::new();
+                let cadet = patch.add_device(Box::new(LzxCadetIv::new()), 0.0, 0.0);
+                let inst = patch.get_device_mut(cadet).unwrap();
+                inst.params.insert("h_adj".into(), pos);
+                inst.params.insert("v_adj".into(), pos);
+                patch.output_device = cadet;
+                if port > 0 {
+                    let thru = patch.add_device(Box::new(Thru), 0.0, 100.0);
+                    patch.connect(cadet, jack, thru, "video_in");
+                    patch.output_device = thru;
+                }
+                let px = render_patch_f32(&patch, w, h).expect("off-screen render");
+                let bytes: Vec<u8> = px.iter().flat_map(|p| p[0].to_le_bytes()).collect();
+                let name = format!("ntsc_pos{pos:.1}_{jack}.f32");
+                std::fs::write(std::path::Path::new(&dir).join(&name), bytes).expect("write dump");
+                manifest += &format!("{name}: first {:.5} last {:.5}\n", px[0][0], px[px.len() - 1][0]);
+            }
+        }
+        std::fs::write(std::path::Path::new(&dir).join("manifest.txt"), &manifest).expect("write manifest");
+        print!("{manifest}");
+    }
+
     /// Cadet IV jack `jack` patched straight into the Wobulator (a scan modulator, so a second pass).
     fn into_wobulator(jack: &str) -> crate::gpu::DevicePatch {
         let mut patch = crate::gpu::DevicePatch::new();

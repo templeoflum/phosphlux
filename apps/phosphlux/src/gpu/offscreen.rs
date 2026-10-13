@@ -18,6 +18,14 @@ pub fn render_patch_f32(patch: &DevicePatch, width: u32, height: u32) -> Result<
     render_segment_f32(patch, &plan.segments[0], width, height)
 }
 
+/// Name, backend and driver of the adapter `render_segment_f32` picks, for a report to record.
+pub fn adapter_summary() -> Option<String> {
+    let instance = wgpu::Instance::default();
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))?;
+    let i = adapter.get_info();
+    Some(format!("{} ({:?}, {:?}, driver {:?})", i.name, i.backend, i.device_type, i.driver_info))
+}
+
 /// Render one composed segment of a plan on its own (no input textures), e.g. the pass that
 /// feeds a scan modulator, to read back what that pass hands on.
 pub fn render_segment_f32(
