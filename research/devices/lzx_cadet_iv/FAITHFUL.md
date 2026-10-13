@@ -55,15 +55,15 @@ An 8-bit screenshot is not enough. Near white, its rounding is up to 0.0045, nea
 | # | Quantity | Margin (proposed) | Sources |
 |---|---|---|---|
 | 1 | Level at every pixel, all outputs | ≤ 0.010 | CIR stages 3 and 8 (the TL431 spread is about ±5 mV); AUD §6 null test |
-| 2 | **Black level, must match:** the first column or row of each rising ramp, against 0 V (true black), not against the simulation | ≤ 0.005 (**a guess**, placeholder) | Hedawn, T-0327: "reference clearly has darker blacks"; TRY2 |
+| 2 | **Black level, must match:** the first column or row of each rising ramp, against 0 V (true black), not against the simulation | ≤ 0.006 (**a guess**, placeholder) | Hedawn, T-0327: "reference clearly has darker blacks"; TRY2 |
 | 3 | Slope, the gain of a straight-line fit | ±1 % | CIR Q3 (current −0.5/+1.3 %); AUD §3 |
 | 4 | Straightness, the largest distance from that line | ≤ 0.004 (one 8-bit step of the linear signal) | CIR Q2 (no figure); PRB (generic transistor) |
 | 5 | Ramp + inverted ramp, at every pixel | ≤ 0.010 from the reference | CIR Q7, Q14 |
 | 6 | Triangle bottom: the ramp's level at the triangle's lowest pixel, and the lowest level | ±0.010 V each | CIR Q8, Q9, stage 10 |
 | 7 | Resets inside the picture | none; otherwise the same pixel ±1 | CIR "Timing"; AUD "Does not carry over" |
 
-A match means every row passes in every condition. Row 2 overrides rows 1 and 5 at the first pixels: there the app is
-judged against black, not against the simulation's grey. The RMS difference is reported but not judged, because it hides an
+A match means every row passes in every condition. Rows 1 and 5 leave out the first pixel of each ramp, which row 2
+judges against black instead of against the simulation's grey. The error over every pixel is still reported. The RMS difference is reported but not judged, because it hides an
 offset (AUD item 4). At the screen, 0.010 ranges from about 1 sRGB code near white to about 25 near black, so whether it
 is visible is untested (RATIONALE §2).
 
@@ -73,9 +73,9 @@ This is in the circuit as drawn (reset driven only by sync, Blanking not connect
 mapping. How grey depends on the assumed picture window, which LZX does not state (TRY2). The simulation therefore
 fails row 2 itself. It is kept as a known difference, not copied into the app.
 
-**Why 0.005 (guess).** It is above the few millivolts the reset leaves (0.0022 H, 0.0055 V in the simulation) and well
-below the 0.07–0.08 grey start. Near black, 0.005 is about 16 sRGB codes (*computed here*), so it may be too loose to
-look black. It has not been tested on a screen.
+**Why 0.006 (guess).** It is just above the few millivolts the reset leaves in the simulation (0.0022 V H, 0.0055 V V),
+so the reset's own floor passes, and well below the 0.07–0.08 grey start. Near black, 0.006 is about 18 sRGB codes
+(*computed here*), so it may be too loose to look black. It has not been tested on a screen.
 
 ## 3. Left out for now
 

@@ -5,8 +5,10 @@ Usage: python3 -I compare2.py   (from anywhere; paths are relative to this file)
 Standard library only. Reuses compare.py's readers, measures and PNG writer; writes try2_numbers.csv and
 try2_side_by_side.png here. Changes from try 1:
 - margins are the T-0293 ones (level 0.010, slope +/-1 %, straightness 0.004, resets +/-1 px);
+- row 1 skips the first pixel of each ramp, which row 2 judges instead (FAITHFUL.md section 2); the error over
+  every pixel is still reported, as a diagnostic;
 - row 2 is now "black level": the first pixel of each ramp is judged against 0 V (true black), not against the
-  simulation, on Hedawn's word (T-0327). Its margin, 0.005, is a placeholder guess;
+  simulation, on Hedawn's word (T-0327). Its margin, 0.006, is a placeholder guess;
 - the picture has labels, so the simulated circuit and the app cannot be mistaken for each other.
 """
 import csv
@@ -22,7 +24,7 @@ W, H = c.W, c.H
 # FAITHFUL.md section 2 (T-0293 margins; row 2 from T-0345).
 TOL = {
     "max_abs_error": 0.010,         # row 1, level at every pixel, against the simulation
-    "black_level": 0.005,           # row 2, first pixel against 0 V. GUESS, placeholder (T-0345)
+    "black_level": 0.006,           # row 2, first pixel against 0 V. GUESS, placeholder (T-0345)
     "fit_gain_error": 0.01,         # row 3, slope
     "linearity_residual": 0.004,    # row 4, straightness
     "reset_in_picture_px": 1,       # row 7, resets
@@ -59,8 +61,24 @@ def draw_text(img, x0, y0, text, scale=2):
         x += 6 * scale
 
 
+def row1_error(ref, app):
+    """Row 1: largest level error, leaving out the first pixel, which row 2 judges against black."""
+    return max(abs(r - a) for r, a in zip(ref[1:], app[1:]))
+
+
+def row1_self_test():
+    # A curve that differs from the app only at the first pixel passes row 1; one that differs at the second fails.
+    app = [(i + 0.5) / 8 for i in range(8)]
+    first = [0.0843] + app[1:]
+    second = app[:1] + [app[1] + 0.0843] + app[2:]
+    assert row1_error(first, app) == 0.0, "row 1 must skip the first pixel"
+    assert row1_error(second, app) > TOL["max_abs_error"], "row 1 must judge the second pixel"
+    print("self-test row 1 first-pixel exception ok")
+
+
 def main():
     c.self_test()
+    row1_self_test()
     c.app_shader_check()
     lt, lh = c.read_csv("line_ntsc_pos1.0.csv", "jh_ramp")
     ft, fv = c.read_csv("frame_ntsc_pos1.0.csv", "jv_ramp")
@@ -90,15 +108,16 @@ def main():
         def put(sig, row, k, v, tol):
             ok = "" if tol is None else ("yes" if abs(v) <= tol else "NO")
             w.writerow([sig, row, k, f"{v:.4f}", "" if tol is None else tol, ok])
-            print(f"{sig:24s} {row:3s} {k:26s} {v:+.4f}  margin {tol if tol is not None else '-':>6}  {ok}")
+            print(f"{sig:24s} {row:3s} {k:28s} {v:+.4f}  margin {tol if tol is not None else '-':>6}  {ok}")
 
         for sig, (ref, app, m) in res.items():
-            put(sig, "1", "max_abs_error", m["max_abs_error"], TOL["max_abs_error"])
+            put(sig, "1", "max_abs_error_after_first_px", row1_error(ref, app), TOL["max_abs_error"])
             put(sig, "2", "black_level_app_first_px", app[0], TOL["black_level"])
             put(sig, "2", "black_level_ref_first_px", ref[0], TOL["black_level"])
             put(sig, "3", "fit_gain_error", m["fit_gain_error"], TOL["fit_gain_error"])
             put(sig, "4", "linearity_residual", m["linearity_residual"], TOL["linearity_residual"])
             put(sig, "7", "reset_in_picture_px", m["reset_in_picture_px"], TOL["reset_in_picture_px"])
+            put(sig, "-", "max_abs_error_all_px", m["max_abs_error"], None)
             put(sig, "-", "rms_error", m["rms_error"], None)
             put(sig, "-", "fit_offset", m["fit_offset"], None)
             put(sig, "-", "ref_last_px", ref[-1], None)
