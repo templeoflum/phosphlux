@@ -1,0 +1,7 @@
+ngspice prints at the first saved point, line view, NTSC, pos 0.5
+v(m2)[0] = -2.01314e+00
+v(xh.nx)[0] = 6.279326e+00
+v(xh.em)[0] = 6.279299e+00
+v(vcc)[0] = 1.128138e+01
+v(vee)[0] = -1.20000e+01
+ich[0] = 1.002421e-03

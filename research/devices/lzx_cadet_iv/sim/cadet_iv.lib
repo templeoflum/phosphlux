@@ -1,0 +1,126 @@
+* LZX Cadet IV Dual Ramp Generator V1.0 -- hand transcription for ngspice
+* Source: cadet-iv-dual-ramp-generator-schematics.pdf (2 pages, Lars Larsen),
+* see ../README.md for what was read and what was assumed.
+*
+* Part numbers below refer to schematic page 1 (horizontal channel).
+* Page 2 (vertical channel) is the same circuit with these renamings:
+*   U10->U9  U12->U13  U2->U5  Q1->Q2  Q3->Q4  C29 56n->C18 15u
+*   R39,R42,R43,R44 -> R22,R23,R24,R25    R45->R27
+*   R1,R2 -> R3,R4    R47,R48,R46,R49 -> R29,R30,R28,R31   R50->R32
+*   R13,R11,R10,R26 -> R8,R7,R5,R6   D5,D6 -> D3,D4   R18,R20,R16,R15 -> R12,R14,R9,R33
+*   J6,J8,J10 -> J2,J3,J4
+
+* ---------------------------------------------------------------------------
+* ASSUMED behavioural op-amp (not a vendor macro-model).
+* Single pole, slew limited by tanh on the input transconductance,
+* output clamped about vsat below each rail, 25 ohm output resistance.
+* ---------------------------------------------------------------------------
+.subckt OPAMP inp inn out vcc vee params: gbw=3e6 sr=13e6 a0=2e5 vsat=1.5
+.param cc=1n
+.param imax={sr*cc}
+.param gm={2*3.14159265*gbw*cc}
+B1 0 n1 I={imax}*tanh({gm}*(V(inp)-V(inn))/{imax})
+C1 n1 0 {cc}
+R1 n1 0 {a0/gm}
+Bhi hi 0 V=V(vcc)-{vsat}-0.6
+Blo lo 0 V=V(vee)+{vsat}+0.6
+Dh n1 hi DCLAMP
+Dl lo n1 DCLAMP
+E1 o1 0 n1 0 1
+Ro o1 out 25
+.model DCLAMP D(Is=1e-14)
+.ends OPAMP
+
+* ASSUMED behavioural TL431: K->A current rises smoothly once V(REF,A) > 2.495 V.
+* Reference input current (about 2 uA) is not modelled.
+.subckt TL431 k a ref
+B1 k a I=0.001*ln(1+exp(min(1000*(V(ref,a)-2.495),40)))
+R1 k a 10Meg
+C1 k a 10p
+.ends TL431
+
+* ASSUMED discrete models (generic, not vendor files)
+.model Q2N3906 PNP(Is=1.41f Xti=3 Eg=1.11 Vaf=18.7 Bf=180.7 Ne=1.5 Ise=0 Ikf=80m Xtb=1.5
++ Br=4.977 Nc=2 Isc=0 Ikr=0 Rc=2.5 Cjc=9.728p Mjc=.5776 Vjc=.75 Fc=.5 Cje=8.063p
++ Mje=.3677 Vje=.75 Tr=33.42n Tf=179.3p Itf=.4 Vtf=4 Xtf=6 Rb=10)
+.model BS170 NMOS(Level=1 Vto=2.0 Kp=0.5 Rd=1 Rs=0.5 Cgso=40p Cgdo=5p)
+.model DBODY D(Is=1e-12 Rs=0.1 Cjo=30p)
+.model D1N5711 D(Is=1.2e-10 N=1 Rs=30 Cjo=2p Bv=70)
+.model D1N4001 D(Is=14.11n N=1.984 Rs=33.89m Cjo=25.89p Bv=75)
+
+* ---------------------------------------------------------------------------
+* -2 V reference (page 1, top left): U11 TL431 with REF tied to K, R38 from +12,
+* R40 12.4K / R41 10K around U1.1 (TL072) -> -2.495*10/12.4 = -2.01 V
+* ---------------------------------------------------------------------------
+.subckt MINUS2REF vcc vee m2
+R38 vcc n11 4.99k
+XU11 n11 0 n11 TL431
+R40 n11 n40 12.4k
+R41 n40 m2 10k
+XU1A 0 n40 m2 vcc vee OPAMP gbw=3e6 sr=13e6
+.ends MINUS2REF
+
+* ---------------------------------------------------------------------------
+* One ramp channel (page 1 = horizontal, page 2 = vertical).
+*   syncn : the 74HC14 output (_HSYNC or _VSYNC), high = discharge
+*   pos   : trimmer R1 (R3) wiper position, 0 = wiper at R2 end, 1 = wiper at U12.2 end
+*   ramp  : U12.3 output = J8 (J3) ;  inv : U12.4 output = J6 (J2) ;  tri : U2.2 output = J10 (J4)
+* Jacks are taken at the far side of the 499R series resistors, unloaded.
+* ---------------------------------------------------------------------------
+.subckt RAMPCH vcc vee m2 syncn jramp jinv jtri params: cramp=56n pos=0.5
+* reference: R39/R42 10K divider around U10 TL431 (K to +12, A to nx), R43 1K to ground
+R39 vcc nref 10k
+R42 nref nx 10k
+R43 nx 0 1k
+XU10 vcc nx nref TL431
+* constant current source: U12.1 holds Q1 emitter at nx, R44 4.99K from +12
+XU12A nx em nb vcc vee OPAMP gbw=3e6 sr=13e6
+R44 vcc em 4.99k
+Q1 col nb em Q2N3906
+* timing capacitor and reset switch
+C29 col 0 {cramp}
+R45 syncn g 100
+M3 col g 0 0 BS170
+DB3 0 col DBODY
+* U12.2 buffer, R1 trimmer + R2 4.99K, U12.3 buffer
+XU12B col buf buf vcc vee OPAMP gbw=3e6 sr=13e6
+R1T buf w {10k*(1-pos)+0.01}
+R1B w r2 {10k*pos+0.01}
+R2 r2 0 4.99k
+XU12C w ramp ramp vcc vee OPAMP gbw=3e6 sr=13e6
+* U12.4 inverter with -2 V offset: out = -ramp*(R46/R47) - (-2)*(R46/R48)
+R47 ramp nd 10k
+R48 m2 nd 20k
+R46 nd inv 10k
+XU12D 0 nd inv vcc vee OPAMP gbw=3e6 sr=13e6
+R49 inv jinv 499
+R50 ramp jramp 499
+* U2 (LM6172) two-diode rectifier: ramp via R13 499R, -2 V via R11 2K
+R13 ramp na 499
+R11 m2 na 2k
+R10 na nb2 1k
+R26 na nc 1k
+XU2A 0 na o1 vcc vee OPAMP gbw=100e6 sr=3000e6
+D5 nb2 o1 D1N5711
+D6 o1 nc D1N5711
+R18 nc p5 499
+R20 nb2 n6 1k
+R16 n6 o2 1k
+XU2B p5 n6 o2 vcc vee OPAMP gbw=100e6 sr=3000e6
+R15 o2 jtri 499
+.ends RAMPCH
+
+* ---------------------------------------------------------------------------
+* Power entry (page 2): D1/D2 1N4001 in series, ferrite beads as 0.1 ohm.
+* Bus rails are ASSUMED to be exactly +12 V / -12 V.
+* ---------------------------------------------------------------------------
+.subckt POWER vcc vee
+VP bus_p 0 12
+VN bus_n 0 -12
+D1 bus_p f1 D1N4001
+RFB1 f1 vcc 0.1
+D2 f2 bus_n D1N4001
+RFB2 vee f2 0.1
+C2 vcc 0 10u
+C6 vee 0 10u
+.ends POWER
