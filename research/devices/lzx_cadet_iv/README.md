@@ -9,13 +9,13 @@ documents say nothing), and **simulated** (ngspice output in `results/`).
 
 | Path | What |
 |---|---|
-| `source/cadet-iv-dual-ramp-generator-schematics.pdf` | Schematic, 2 pages. From https://raw.githubusercontent.com/lzxindustries/lzxtm/main/static/pdf/cadet-iv-dual-ramp-generator/cadet-iv-dual-ramp-generator-schematics.pdf, downloaded 2026-10-13 06:30 UTC. SHA-256 `27a0ab4d…8704`. PDF metadata: author Lars Larsen, created 2016-05-03, modified 2018-12-07. No text layer, so I read it from page images rendered at 200 and 400 dpi |
-| `source/cadet-iv-dual-ramp-generator-bom.csv` | BOM from the same lzxtm folder, …/cadet-iv-dual-ramp-generator-bom.csv, downloaded 2026-10-13. SHA-256 `43894618…d62b` |
-| `source/LZX-C4-V1.0-Bill-of-Materials.csv` | BOM from https://github.com/lzxindustries/lzxcadet/blob/main/C4/BOM/ ("LZX-C4 V1.0 Bill of Materials.csv"), downloaded 2026-10-13. It has the same rows and values as the lzxtm copy. The only difference is trailing spaces in a few cells |
+| `source/cadet-iv-dual-ramp-generator-schematics.pdf` | Schematic, 2 pages. From https://raw.githubusercontent.com/lzxindustries/lzxtm/main/static/pdf/cadet-iv-dual-ramp-generator/cadet-iv-dual-ramp-generator-schematics.pdf, downloaded 2026-10-13 06:30 UTC. SHA-256 `27a0ab4d03fb198bf8c8109a517cb62a12517ae840f78b498963af7df9108704`. PDF metadata: author Lars Larsen, created 2016-05-03, modified 2018-12-07. No text layer, so I read it from page images rendered at 200 and 400 dpi |
+| `source/cadet-iv-dual-ramp-generator-bom.csv` | BOM from the same lzxtm folder, …/cadet-iv-dual-ramp-generator-bom.csv, downloaded 2026-10-13. SHA-256 of the bytes as downloaded (CRLF line endings) and as committed: `438946189094ebf71586f1e01e333382dfbd9d33e1d605205dfb9906da15d62b`. The first commit (2e887df) stored an LF-normalised copy (SHA-256 `10347e050b09990b84f201fa3fff22704dbe9dacc7da8d0a79d29d854c14033c`) because of the repo's `text=auto eol=lf` rule. `.gitattributes` in this folder now sets `source/** -text`, so later commits store the downloaded bytes unchanged |
+| `source/LZX-C4-V1.0-Bill-of-Materials.csv` | BOM from https://github.com/lzxindustries/lzxcadet/blob/main/C4/BOM/ ("LZX-C4 V1.0 Bill of Materials.csv"), downloaded 2026-10-13. SHA-256 `2ea60d4ade6c44726bd33c6cc28d594d9043dfa8ebd7fb9225a9d99447fc39cc` (as downloaded and as committed). It has the same rows and values as the lzxtm copy. The only difference is trailing spaces in a few cells |
 | `sim/cadet_iv.lib` | Hand-transcribed netlist (subcircuits) plus the assumed device models |
 | `sim/run_sims.py`, `sim/run.sh` | Builds one deck per case, runs `ngspice -b`, and writes the CSVs, SVG plots and summary |
 | `results/line_<std>_pos<p>.csv/.svg` | Two video lines of all six outputs, sampled every 20 ns, with t=0 at an H sync leading edge |
-| `results/frame_<std>_pos<p>.csv/.svg` | One field plus 2 ms of all six outputs, sampled every 5 µs, with t=0 at a V sync leading edge, after two fields of settling |
+| `results/frame_<std>_pos<p>.csv/.svg` | One frame (two fields) plus 1 ms of all six outputs: 0–34.37 ms on NTSC, 0–41 ms on PAL. Sampled every 5 µs, with t=0 at a V sync leading edge, after two fields of settling. The sim has no interlace, so the two fields come out identical (V peaks agree within 0.1 mV) |
 | `results/summary.csv` | Min and max of every output in every run |
 | `results/operating_point.txt` | Reference voltages and charging current that ngspice printed |
 
@@ -113,4 +113,4 @@ and the triangle's dip moves away from centre. Unit-to-unit spread in real modul
 
 ## How to rerun
 
-`sh sim/run.sh` runs 8 cases and takes about 17 s on the machine used. Decks and ngspice logs go to `<repo>/.scratch/cadet_iv_runs/`.
+`sh sim/run.sh` runs 8 cases and takes about 30 s on the machine used. Decks and ngspice logs go to `<repo>/.scratch/cadet_iv_runs/`.

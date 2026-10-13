@@ -1,0 +1,2 @@
+# Keep downloaded source files byte-identical to what was fetched (no EOL normalisation).
+source/** -text

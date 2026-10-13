@@ -46,9 +46,10 @@ def deck(std, pos, view):
         tstop = t0 + 2 * s["line"]
         tran = f".tran 20n {tstop:.6e} {t0:.6e} 50n"
     else:
-        # one full field after two fields of settling, starting at a V sync edge
+        # two full fields (one frame) plus 1 ms, after two fields of settling,
+        # starting at a V sync edge
         t0 = 2 * s["field"]
-        tstop = t0 + s["field"] + 2e-3
+        tstop = t0 + 2 * s["field"] + 1e-3
         tran = f".tran 5u {tstop:.6e} {t0:.6e} 1u"
     out = os.path.join(WORK, f"{view}_{std}_pos{pos:.1f}.dat")
     vecs = " ".join(f"v({v})" for v, _ in OUTS)
@@ -100,7 +101,7 @@ def run(std, pos, view):
 def write_csv(path, header, rows, t0):
     names = ["time_s"] + [v for v, _ in OUTS]
     with open(path, "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(names)
         for r in rows:
             w.writerow([f"{r[0] - t0:.9e}"] + [f"{x:.5f}" for x in r[1:]])
@@ -168,7 +169,7 @@ def main():
                 oplines = ops
             print(tag, "rows", len(rows))
     with open(os.path.join(RESULTS, "summary.csv"), "w", newline="") as f:
-        csv.writer(f).writerows(summary)
+        csv.writer(f, lineterminator="\n").writerows(summary)
     with open(os.path.join(RESULTS, "operating_point.txt"), "w") as f:
         f.write("ngspice prints at the first saved point, line view, NTSC, pos 0.5\n")
         f.write("\n".join(oplines) + "\n")
