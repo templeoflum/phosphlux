@@ -44,3 +44,6 @@ codegen-units = 1
 
 [profile.dev]
 opt-level = 1  # Some optimization even in dev for real-time work
+
+[patch.crates-io]
+block = { path = "vendor/block-0.1.6" }
