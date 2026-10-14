@@ -136,3 +136,12 @@ It needs ngspice, python3, cargo and a GPU, and takes about 1.5 minutes on the m
 `comparison/report.md` gives pass or fail for each check, with the measured value, the margin and the headroom left. `comparison/side_by_side_ntsc_pos<p>.png` shows the six jacks labelled *reference (circuit)*, *app* and *difference* (×25, mid grey = equal). `comparison/numbers.csv` has the same numbers as the report, and `comparison/app_profiles.csv` has the circuit's and the app's value at every column (H jacks) or row (V jacks). A failed check is written into the report and does not stop the script. A step that cannot run (no ngspice, no GPU, a build error) stops it with a non-zero exit.
 
 The committed `comparison/` is one run of this script. Rerunning it reproduced `results/` byte for byte.
+
+## H triangle crossover (T-0432)
+
+[`TRIANGLE_BOTTOM.md`](TRIANGLE_BOTTOM.md) records the diode-capacitance handover, model
+sensitivity runs, and the app correction. Regenerate the isolated-stage correction with
+`python3 triangle/build_table.py`; repeat the full-circuit sensitivity and held-out trim
+checks with `python3 triangle/probe.py` (paths relative to this directory). Both write
+scratch decks/logs inside the repository; the table and evidence CSVs stay in `triangle/`.
+Then `run_all.sh` repeats the actual CPU/GPU comparison with unchanged faithfulness margins.

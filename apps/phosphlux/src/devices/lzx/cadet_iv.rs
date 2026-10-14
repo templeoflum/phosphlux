@@ -15,8 +15,12 @@ use crate::gpu::{DeviceParameter, Port, ShaderDevice, SignalType};
 
 /// TL431 reference, typical (stage 3, datasheet TI p14).
 pub const VREF: f64 = 2.495;
-/// Charging current: (2·Vref)/R44 with R39 = R42 = 10K, R44 = 4.99K, Iref ignored (stage 4).
+/// Ideal emitter current from CIRCUIT.md stage 4, with Iref ignored.
 pub const I_CHARGE: f64 = 2.0 * VREF / 4.99e3;
+/// Collector charging current. Stage 4's ideal emitter current is 1 mA, but Q1 loses
+/// base current. 0.99753 mA is the central-rise fit to the generic reference transistor
+/// (TRIANGLE_BOTTOM.md); the ideal 1 mA advanced U2's fast handover by about one column.
+pub const I_COLLECTOR: f64 = 0.99753e-3;
 /// Timing capacitors C29 (H) and C18 (V), nominal (stage 5).
 pub const C_H: f64 = 56e-9;
 pub const C_V: f64 = 15e-6;
@@ -37,6 +41,30 @@ pub const R_RESET_ON: f64 = 2.33;
 #[cfg_attr(not(test), allow(dead_code))] // CPU model: tests now, the GPU comparison next
 pub fn trim_fraction(p: f64) -> f64 {
     (4.99 + 10.0 * p.clamp(0.0, 1.0)) / 14.99
+}
+
+// U2/D5/D6 dynamic crossover, tabulated from the isolated schematic stage.
+// The diode capacitance carries current while U2.1 changes polarity; stage 9's ideal
+// absolute value misses that interval. See TRIANGLE_BOTTOM.md for sensitivity evidence.
+mod triangle_table {
+    include!("../../../../../research/devices/lzx_cadet_iv/triangle/correction.rs");
+}
+
+fn h_triangle_correction(ramp: f64, trim: f64) -> f64 {
+    let delta = ramp - TRI_ZERO;
+    if !(-0.03..=0.03).contains(&delta) {
+        return 0.0;
+    }
+    let x = ((delta + 0.03) / 0.0005).clamp(0.0, 120.0);
+    let y = trim.clamp(0.0, 1.0) * 8.0;
+    let i = (x.floor() as usize).min(119);
+    let j = (y.floor() as usize).min(7);
+    let row = |r: usize| {
+        let a = triangle_table::H_TRI_CORRECTION[r * 121 + i];
+        let b = triangle_table::H_TRI_CORRECTION[r * 121 + i + 1];
+        a + (b - a) * (x - i as f64)
+    };
+    row(j) + (row(j + 1) - row(j)) * (y - j as f64)
 }
 
 // ─── Timing (assumed; FAITHFUL.md §2, sim/run_sims.py) ───────
@@ -87,7 +115,7 @@ pub const PAL: Standard = Standard {
 /// After sync it charges at I/C from what is left.
 #[cfg_attr(not(test), allow(dead_code))] // CPU model: tests now, the GPU comparison next
 pub fn cap_voltage(t: f64, period: f64, sync: f64, c: f64) -> f64 {
-    let slope = I_CHARGE / c;
+    let slope = I_COLLECTOR / c;
     let tau = R_RESET_ON * c;
     let peak = slope * (period - sync);
     if t < sync {
@@ -133,7 +161,8 @@ impl CadetIvModel {
     }
 
     pub fn jacks(&self, u: f64, v: f64) -> [f64; 6] {
-        let h = channel_jacks(self.h_ramp(u));
+        let mut h = channel_jacks(self.h_ramp(u));
+        h[2] += h_triangle_correction(h[0], self.h_adj);
         let w = channel_jacks(self.v_ramp(v));
         [h[0], h[1], h[2], w[0], w[1], w[2]]
     }
@@ -171,6 +200,20 @@ fn shader_source(s: &Standard) -> String {
 // LZX Cadet IV Dual Ramp Generator (T-0374). Formulas and constants: devices/lzx/cadet_iv.rs,
 // from research/devices/lzx_cadet_iv/CIRCUIT.md. NTSC timing as FAITHFUL.md section 2 assumes.
 
+// U2/D5/D6 crossover correction (TRIANGLE_BOTTOM.md), same table as the CPU.
+var<private> lzx_cadet_iv_tri_table: array<f32, 1089> = array<f32, 1089>({tri_table});
+fn lzx_cadet_iv_tri_correction(ramp: f32, trim: f32) -> f32 {{
+    let delta = ramp - {tri_zero};
+    if delta < -0.03 || delta > 0.03 {{ return 0.0; }}
+    let x = clamp((delta + 0.03) / 0.0005, 0.0, 120.0);
+    let y = clamp(trim, 0.0, 1.0) * 8.0;
+    let i = min(u32(floor(x)), 119u);
+    let j = min(u32(floor(y)), 7u);
+    let a = mix(lzx_cadet_iv_tri_table[j * 121u + i], lzx_cadet_iv_tri_table[j * 121u + i + 1u], x - f32(i));
+    let b = mix(lzx_cadet_iv_tri_table[(j + 1u) * 121u + i], lzx_cadet_iv_tri_table[(j + 1u) * 121u + i + 1u], x - f32(i));
+    return mix(a, b, y - f32(j));
+}}
+
 // Stages 4-5: capacitor charged at I/C after sync, discharged through the BS170 during sync.
 fn lzx_cadet_iv_cap(t: f32, period: f32, sync: f32, slope: f32, tau: f32) -> f32 {{
     let peak = slope * (period - sync);
@@ -206,6 +249,7 @@ fn device_lzx_cadet_iv_output(uv: vec2<f32>, time: f32, port: u32, h_adj: f32, v
     }} else if jack == 2u {{
         // Stage 9: triangle, (1K/499R) * |ramp - |V(-2V)|*499/2K|.
         v = {tri_gain} * abs(ramp - {tri_zero});
+        if port < 3u {{ v += lzx_cadet_iv_tri_correction(ramp, h_adj); }}
     }}
     return vec4<f32>(v, v, v, 1.0);
 }}
@@ -218,15 +262,16 @@ fn device_lzx_cadet_iv_process(uv: vec2<f32>, time: f32, h_adj: f32, v_adj: f32)
         h_len = f(s.h_len),
         line = f(s.line),
         h_sync = f(s.h_sync),
-        slope_h = f(I_CHARGE / C_H),
+        slope_h = f(I_COLLECTOR / C_H),
         tau_h = f(R_RESET_ON * C_H),
         v_start = f(s.v_start_lines),
         rows = f(s.rows),
         field = f(s.field),
         v_sync = f(s.v_sync),
-        slope_v = f(I_CHARGE / C_V),
+        slope_v = f(I_COLLECTOR / C_V),
         tau_v = f(R_RESET_ON * C_V),
         inv = f(INV_CEILING),
+        tri_table = triangle_table::H_TRI_CORRECTION.iter().map(|v| f(*v)).collect::<Vec<_>>().join(","),
         tri_gain = f(TRI_GAIN),
         tri_zero = f(TRI_ZERO),
     )
