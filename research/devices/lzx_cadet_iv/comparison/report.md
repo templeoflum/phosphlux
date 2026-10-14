@@ -2,19 +2,15 @@
 
 Written by `run_all.sh` through `faithful/compare_app.py`; do not edit by hand. Rule and margins: [`FAITHFUL.md`](../FAITHFUL.md) section 2 (every margin is a guess, untested on a screen).
 
-- App side: the app's Cadet IV device, composed as the app composes it and rendered off-screen on the GPU at 720x240, read back as floats before any clamp or sRGB. GPU Apple M5 Max (Metal, IntegratedGpu, driver "").
+- App side: the app's Cadet IV device, composed as the app composes it and rendered off-screen on the GPU at 720x240 NTSC and 720x288 PAL, read back as floats before any clamp or sRGB. GPU Apple M5 Max (Metal, IntegratedGpu, driver "").
 - Reference side: the ngspice simulation in `results/`, sampled at each pixel centre.
-- Checks judged: 90. Passed: 90. **Failed: 0.** Conditions not run: 1.
+- Checks judged: 120. Passed: 120. **Failed: 0.** Conditions not run: 0.
 
-**Verdict: every judged check passes, but not every condition was run, so not yet a match by FAITHFUL.md.**
+**Verdict: a match by FAITHFUL.md.**
 
 CPU model tests (`cargo test cadet_iv`): passed: test result: ok. 8 passed; 0 failed; 3 ignored; 0 measured; 8 filtered out
 
 Reference document gate (`faithful/reference_check.txt`): 28 pass, 0 fail.
-
-## Not run
-
-- pal trim 0.5: the app's Cadet IV has NTSC timing only; PAL is in the CPU model, not the app.
 
 ## Every check
 
@@ -148,5 +144,48 @@ Picture: [`side_by_side_ntsc_pos1.0.png`](side_by_side_ntsc_pos1.0.png)
 | - | J3 V ramp: RMS difference (not judged) | +0.00104 |  |  | info |  |
 | - | J2 V inverted: RMS difference (not judged) | +0.00052 |  |  | info |  |
 | - | J4 V triangle: RMS difference (not judged) | +0.00156 |  |  | info |  |
+
+### pal trim 0.5
+
+Picture: [`side_by_side_pal_pos0.5.png`](side_by_side_pal_pos0.5.png)
+
+| Row | Check | Measured | Margin | Headroom | Result | Note |
+|---|---|---|---|---|---|---|
+| 1 | J8 H ramp: largest level error, every pixel | +0.00007 | 0.01 | +0.00993 | pass | at x=514 y=0 |
+| 1 | J6 H inverted: largest level error, every pixel | -0.00214 | 0.01 | +0.00786 | pass | at x=516 y=0 |
+| 1 | J10 H triangle: largest level error, every pixel | +0.00307 | 0.01 | +0.00693 | pass | at x=513 y=0 |
+| 1 | J3 V ramp: largest level error, every pixel | +0.00074 | 0.01 | +0.00926 | pass | at x=0 y=0 |
+| 1 | J2 V inverted: largest level error, every pixel | -0.00125 | 0.01 | +0.00875 | pass | at x=0 y=3 |
+| 1 | J4 V triangle: largest level error, every pixel | -0.00197 | 0.01 | +0.00803 | pass | at x=0 y=0 |
+| 2 | J8 H ramp: start level (circuit 0.0693) | +0.00002 | 0.01 | +0.00998 | pass |  |
+| 2 | J6 H inverted: start level (circuit 0.9389) | -0.00211 | 0.01 | +0.00789 | pass |  |
+| 2 | J3 V ramp: start level (circuit 0.0679) | +0.00074 | 0.01 | +0.00926 | pass |  |
+| 2 | J2 V inverted: start level (circuit 0.9387) | -0.00125 | 0.01 | +0.00875 | pass |  |
+| 3 | J8 H ramp: slope, fit gain error | -0.00000 | 0.01 | +0.01000 | pass |  |
+| 4 | J8 H ramp: straightness, largest distance from fit | +0.00005 | 0.004 | +0.00395 | pass |  |
+| 3 | J6 H inverted: slope, fit gain error | -0.00001 | 0.01 | +0.00999 | pass |  |
+| 4 | J6 H inverted: straightness, largest distance from fit | +0.00002 | 0.004 | +0.00398 | pass |  |
+| 3 | J3 V ramp: slope, fit gain error | +0.00045 | 0.01 | +0.00955 | pass |  |
+| 4 | J3 V ramp: straightness, largest distance from fit | +0.00002 | 0.004 | +0.00398 | pass |  |
+| 3 | J2 V inverted: slope, fit gain error | +0.00044 | 0.01 | +0.00956 | pass |  |
+| 4 | J2 V inverted: straightness, largest distance from fit | +0.00002 | 0.004 | +0.00398 | pass |  |
+| 5 | H ramp + inverted, every pixel | -0.00211 | 0.01 | +0.00789 | pass | at x=518 y=0 |
+| 5 | V ramp + inverted, every pixel | -0.00053 | 0.01 | +0.00947 | pass | at x=594 y=165 |
+| 6 | H triangle: ramp level at lowest pixel | +0.00001 | 0.01 | +0.00999 | pass | app col 509, circuit col 509 |
+| 6 | H triangle: lowest level | -0.00000 | 0.01 | +0.01000 | pass | app -0.0005, circuit -0.0005 |
+| 6 | V triangle: ramp level at lowest pixel | +0.00051 | 0.01 | +0.00949 | pass | app row 153, circuit row 153 |
+| 6 | V triangle: lowest level | +0.00067 | 0.01 | +0.00933 | pass | app 0.0011, circuit 0.0005 |
+| 7 | J8 H ramp: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| 7 | J6 H inverted: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| 7 | J10 H triangle: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| 7 | J3 V ramp: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| 7 | J2 V inverted: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| 7 | J4 V triangle: resets in picture (circuit 0, app 0) | 0 | 1 | 1 | pass |  |
+| - | J8 H ramp: RMS difference (not judged) | +0.00002 |  |  | info |  |
+| - | J6 H inverted: RMS difference (not judged) | +0.00212 |  |  | info |  |
+| - | J10 H triangle: RMS difference (not judged) | +0.00075 |  |  | info |  |
+| - | J3 V ramp: RMS difference (not judged) | +0.00054 |  |  | info |  |
+| - | J2 V inverted: RMS difference (not judged) | +0.00106 |  |  | info |  |
+| - | J4 V triangle: RMS difference (not judged) | +0.00160 |  |  | info |  |
 
 The pictures have three columns, labelled reference (circuit), app and difference. Rows are the six jacks in panel order. Difference is mid grey where they agree, scaled x25 (lighter: the circuit is higher). The reference and app columns are sRGB-encoded and clipped to 0-1 for display only; the numbers are unclamped.

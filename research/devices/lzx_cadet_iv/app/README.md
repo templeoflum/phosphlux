@@ -25,9 +25,21 @@ tests check it against `faithful/reference_check.txt` within FAITHFUL.md's margi
 What is not from LZX:
 - The sync widths and the picture window. These are assumed, as in the simulation and in FAITHFUL.md §2.
 - The reset switch's 2.33 Ω. It is fitted to the simulation's V-ramp discharge (CIRCUIT.md Q11: not stated).
-- NTSC only. PAL is in the CPU model but not in the app.
+- PAL uses the assumed timing constants in `cadet_iv.rs`, with a 720×288 picture window.
 
 Patching a jack into a scan modulator (for example the Wobulator, which runs in its own pass) hands on
 that jack, not the first one (fixed after the T-0374 check). `each_jack_reaches_a_scan_modulator` checks
 the composed passes. `cadet_iv_gpu_into_wobulator` (ignored, needs a GPU) reads back the texture the
 Wobulator samples for each of the six jacks.
+
+## Timing (T-0433)
+
+The app device exposes **Timing (0 NTSC / 1 PAL)** alongside the two trimmers.
+Values below 0.5 select NTSC; values at or above 0.5 select PAL. NTSC is the default.
+This setting represents the sync standard supplied to the module, not a physical panel control.
+Both standards use the same circuit constants and the unchanged H-triangle crossover correction.
+
+`../run_all.sh` renders all six jacks at NTSC trims 0.0, 0.5, 1.0 and PAL trim 0.5.
+The GPU dump checks every pixel against the CPU model before the circuit comparison.
+PAL floats have 720×288 pixels; NTSC floats have 720×240 pixels.
+The comparison retains separate profiles and pictures for each standard and trim.

@@ -133,7 +133,7 @@ It needs ngspice, python3, cargo and a GPU, and takes about 1.5 minutes on the m
 | 4. Device, off-screen GPU render | the ignored test `cadet_iv_gpu_dump` in the same file, composed as the app composes it, read back as unclamped floats | raw floats in `<repo>/.scratch/cadet_iv_app/` (not committed) |
 | 5. Comparison | `faithful/compare_app.py`, with [`FAITHFUL.md`](FAITHFUL.md) section 2's rule and margins | `comparison/` |
 
-`comparison/report.md` gives pass or fail for each check, with the measured value, the margin and the headroom left. `comparison/side_by_side_ntsc_pos<p>.png` shows the six jacks labelled *reference (circuit)*, *app* and *difference* (×25, mid grey = equal). `comparison/numbers.csv` has the same numbers as the report, and `comparison/app_profiles.csv` has the circuit's and the app's value at every column (H jacks) or row (V jacks). A failed check is written into the report and does not stop the script. A step that cannot run (no ngspice, no GPU, a build error) stops it with a non-zero exit.
+`comparison/report.md` gives pass or fail for each check, with the measured value, the margin and the headroom left. `comparison/side_by_side_<std>_pos<p>.png` shows the six jacks labelled *reference (circuit)*, *app* and *difference* (×25, mid grey = equal). `comparison/numbers.csv` has the same numbers as the report, and `comparison/app_profiles.csv` has the circuit's and the app's value at every column (H jacks) or row (V jacks). A failed check is written into the report and does not stop the script. A step that cannot run (no ngspice, no GPU, a build error) stops it with a non-zero exit.
 
 The committed `comparison/` is one run of this script. Rerunning it reproduced `results/` byte for byte.
 
@@ -145,3 +145,9 @@ sensitivity runs, and the app correction. Regenerate the isolated-stage correcti
 checks with `python3 triangle/probe.py` (paths relative to this directory). Both write
 scratch decks/logs inside the repository; the table and evidence CSVs stay in `triangle/`.
 Then `run_all.sh` repeats the actual CPU/GPU comparison with unchanged faithfulness margins.
+
+## PAL timing (T-0433)
+
+The app now selects NTSC or PAL timing through its Timing parameter, defaulting to NTSC.
+`run_all.sh` compares all four conditions in FAITHFUL.md §2, including PAL trim 0.5 at 720×288.
+The assumed PAL window remains unchecked against hardware; the rule and margins are unchanged.

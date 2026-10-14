@@ -3,9 +3,9 @@
 
 Usage: python3 -I compare_app.py <dump dir> <out dir> [<cpu test log>]
 Standard library only. <dump dir> holds the off-screen GPU render that the ignored Rust test
-`cadet_iv_gpu_dump` writes (ntsc_pos<p>_<jack>.f32, 720x240 raw f32, and manifest.txt). The reference is
+`cadet_iv_gpu_dump` writes (<std>_pos<p>_<jack>.f32, 720x240 NTSC or 720x288 PAL raw f32, and manifest.txt). The reference is
 ../results/{line,frame}_<std>_pos<p>.csv from the ngspice run, sampled at pixel centres as reference_check.py
-does. Writes, in <out dir>: report.md, numbers.csv, app_profiles.csv and side_by_side_ntsc_pos<p>.png.
+does. Writes, in <out dir>: report.md, numbers.csv, app_profiles.csv and side_by_side_<std>_pos<p>.png.
 The rule and margins are FAITHFUL.md section 2's; they are copied here, not changed.
 """
 import array
@@ -19,7 +19,10 @@ import compare as c  # noqa: E402
 import compare2 as c2  # noqa: E402
 import reference_check as rc  # noqa: E402
 
-W, H = 720, 240
+def dimensions(std):
+    window = rc.WINDOWS[std]
+    return window[3], window[5]
+
 JACKS = [  # (app jack, sim vector, panel name), panel order (CIRCUIT.md stage 12)
     ("h_ramp", "jh_ramp", "J8 H ramp"),
     ("h_inv", "jh_inv", "J6 H inverted"),
@@ -29,7 +32,6 @@ JACKS = [  # (app jack, sim vector, panel name), panel order (CIRCUIT.md stage 1
     ("v_tri", "jv_tri", "J4 V triangle"),
 ]
 CONDITIONS = [("ntsc", "0.0"), ("ntsc", "0.5"), ("ntsc", "1.0"), ("pal", "0.5")]  # FAITHFUL.md section 2
-APP_STANDARDS = {"ntsc"}  # the app's Cadet IV runs NTSC timing only (app/README.md)
 
 # FAITHFUL.md section 2. Every margin is a guess, untested on a screen.
 LEVEL = 0.010      # rows 1, 2, 5, 6
@@ -77,9 +79,10 @@ def reference(std, pos):
     return out
 
 
-def load_app(dump, pos, jack):
+def load_app(dump, std, pos, jack):
+    W, H = dimensions(std)
     a = array.array("f")
-    with open(os.path.join(dump, f"ntsc_pos{pos}_{jack}.f32"), "rb") as f:
+    with open(os.path.join(dump, f"{std}_pos{pos}_{jack}.f32"), "rb") as f:
         a.frombytes(f.read())
     if sys.byteorder != "little":
         a.byteswap()
@@ -88,7 +91,7 @@ def load_app(dump, pos, jack):
     return a
 
 
-def full_ref(jack, ref):
+def full_ref(jack, ref, W):
     """The reference broadcast to every pixel, row-major: H jacks vary by column, V jacks by row."""
     r = ref[jack]
     if jack.startswith("h"):
@@ -96,7 +99,7 @@ def full_ref(jack, ref):
     return lambda i: r[i // W]
 
 
-def profile(jack, img):
+def profile(jack, img, W, H):
     """The app's 1D profile along the jack's axis (row 0 for H, column 0 for V)."""
     return list(img[:W]) if jack.startswith("h") else [img[j * W] for j in range(H)]
 
@@ -108,16 +111,17 @@ def judge(rows, cond, row, check, value, margin, note=""):
 
 
 def run_condition(dump, std, pos, rows, profiles):
+    W, H = dimensions(std)
     cond = f"{std} trim {pos}"
     ref = reference(std, pos)
-    app = {jack: load_app(dump, pos, jack) for jack, _, _ in JACKS}
-    prof = {jack: profile(jack, app[jack]) for jack, _, _ in JACKS}
-    profiles[pos] = (ref, prof)
+    app = {jack: load_app(dump, std, pos, jack) for jack, _, _ in JACKS}
+    prof = {jack: profile(jack, app[jack], W, H) for jack, _, _ in JACKS}
+    profiles[std, pos] = (ref, prof)
     names = {jack: name for jack, _, name in JACKS}
 
     # Row 1: level at every pixel, all six outputs.
     for jack, _, name in JACKS:
-        r = full_ref(jack, ref)
+        r = full_ref(jack, ref, W)
         img = app[jack]
         worst = max(range(W * H), key=lambda i: abs(img[i] - r(i)))
         judge(rows, cond, "1", f"{name}: largest level error, every pixel", img[worst] - r(worst), LEVEL,
@@ -137,7 +141,7 @@ def run_condition(dump, std, pos, rows, profiles):
               STRAIGHT)
     # Row 5: ramp + inverted ramp at every pixel, against the reference's sum.
     for ch in ("h", "v"):
-        rr, ri = full_ref(f"{ch}_ramp", ref), full_ref(f"{ch}_inv", ref)
+        rr, ri = full_ref(f"{ch}_ramp", ref, W), full_ref(f"{ch}_inv", ref, W)
         ar, ai = app[f"{ch}_ramp"], app[f"{ch}_inv"]
         worst = max(range(W * H), key=lambda i: abs(ar[i] + ai[i] - rr(i) - ri(i)))
         judge(rows, cond, "5", f"{ch.upper()} ramp + inverted, every pixel",
@@ -160,7 +164,7 @@ def run_condition(dump, std, pos, rows, profiles):
               c.reset_distance(rr, ar, n), RESET_PX)
     # Not judged (FAITHFUL.md: RMS hides an offset), reported only.
     for jack, _, name in JACKS:
-        r, img = full_ref(jack, ref), app[jack]
+        r, img = full_ref(jack, ref, W), app[jack]
         rms = (sum((img[i] - r(i)) ** 2 for i in range(W * H)) / (W * H)) ** 0.5
         rows.append({"condition": cond, "row": "-", "check": f"{name}: RMS difference (not judged)", "value": rms,
                      "margin": "", "headroom": "", "result": "info", "note": ""})
@@ -168,11 +172,12 @@ def run_condition(dump, std, pos, rows, profiles):
 
 def picture(path, std, pos, ref, prof):
     """Six rows (panel order) x three columns: reference (circuit) | app | difference."""
+    W, H = dimensions(std)
     lw, top, gap = 150, 40, 6
     pw = lw + W * 3 + gap * 2
     ph = top + (H + gap) * 6
     img = [[255] * pw for _ in range(ph)]
-    draw_text(img, 4, 4, f"NTSC TRIM {pos}")
+    draw_text(img, 4, 4, f"{std.upper()} TRIM {pos}")
     for k, text in enumerate(["REFERENCE (CIRCUIT)", "APP", f"DIFFERENCE X{DIFF_GAIN}"]):
         draw_text(img, lw + k * (W + gap) + 4, 22, text)
     for row, (jack, _, name) in enumerate(JACKS):
@@ -200,13 +205,8 @@ def main():
 
     rows, profiles = [], {}
     for std, pos in CONDITIONS:
-        if std not in APP_STANDARDS:
-            rows.append({"condition": f"{std} trim {pos}", "row": "all", "check": "every check", "value": "",
-                         "margin": "", "headroom": "", "result": "NOT RUN",
-                         "note": "the app's Cadet IV has NTSC timing only; PAL is in the CPU model, not the app"})
-            continue
         run_condition(dump, std, pos, rows, profiles)
-        ref, prof = profiles[pos]
+        ref, prof = profiles[std, pos]
         picture(os.path.join(out, f"side_by_side_{std}_pos{pos}.png"), std, pos, ref, prof)
 
     fmt = lambda v: f"{v:+.5f}" if isinstance(v, float) else str(v)
@@ -220,11 +220,11 @@ def main():
     with open(os.path.join(out, "app_profiles.csv"), "w", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["condition", "jack", "axis", "index", "circuit_v", "app_v"])
-        for pos, (ref, prof) in profiles.items():
+        for (std, pos), (ref, prof) in profiles.items():
             for jack, _, _ in JACKS:
                 axis = "col" if jack.startswith("h") else "row"
                 for i, (rv, av) in enumerate(zip(ref[jack], prof[jack])):
-                    w.writerow([f"ntsc trim {pos}", jack, axis, i, f"{rv:.6f}", f"{av:.6f}"])
+                    w.writerow([f"{std} trim {pos}", jack, axis, i, f"{rv:.6f}", f"{av:.6f}"])
 
     judged = [r for r in rows if r["result"] in ("pass", "FAIL")]
     fails = [r for r in judged if r["result"] == "FAIL"]
@@ -237,7 +237,7 @@ def main():
         "[`FAITHFUL.md`](../FAITHFUL.md) section 2 (every margin is a guess, untested on a screen).",
         "",
         f"- App side: the app's Cadet IV device, composed as the app composes it and rendered off-screen on the GPU "
-        f"at 720x240, read back as floats before any clamp or sRGB. GPU {manifest.split(': ', 1)[1]}.",
+        f"at 720x240 NTSC and 720x288 PAL, read back as floats before any clamp or sRGB. GPU {manifest.split(': ', 1)[1]}.",
         "- Reference side: the ngspice simulation in `results/`, sampled at each pixel centre.",
         f"- Checks judged: {len(judged)}. Passed: {len(judged) - len(fails)}. **Failed: {len(fails)}.** "
         f"Conditions not run: {len(not_run)}.",

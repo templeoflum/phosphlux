@@ -96,7 +96,6 @@ pub const NTSC: Standard = Standard {
     rows: 240.0,
 };
 
-#[cfg_attr(not(test), allow(dead_code))] // CPU model: tests now, the GPU comparison next
 pub const PAL: Standard = Standard {
     line: 64.0e-6,
     field: 20.0e-3,
@@ -198,7 +197,7 @@ fn shader_source(s: &Standard) -> String {
     format!(
         r#"
 // LZX Cadet IV Dual Ramp Generator (T-0374). Formulas and constants: devices/lzx/cadet_iv.rs,
-// from research/devices/lzx_cadet_iv/CIRCUIT.md. NTSC timing as FAITHFUL.md section 2 assumes.
+// from research/devices/lzx_cadet_iv/CIRCUIT.md. NTSC/PAL timing as FAITHFUL.md section 2 assumes.
 
 // U2/D5/D6 crossover correction (TRIANGLE_BOTTOM.md), same table as the CPU.
 var<private> lzx_cadet_iv_tri_table: array<f32, 1089> = array<f32, 1089>({tri_table});
@@ -230,9 +229,18 @@ fn lzx_cadet_iv_trim(p: f32) -> f32 {{
 
 // Six jacks in panel order (stage 12): 0 J8 H ramp, 1 J6 H inverted, 2 J10 H triangle,
 // 3 J3 V ramp, 4 J2 V inverted, 5 J4 V triangle. Volts, unclamped; 1 V = 1.0.
-fn device_lzx_cadet_iv_output(uv: vec2<f32>, time: f32, port: u32, h_adj: f32, v_adj: f32) -> vec4<f32> {{
+fn device_lzx_cadet_iv_output(uv: vec2<f32>, time: f32, port: u32, h_adj: f32, v_adj: f32, standard: f32) -> vec4<f32> {{
     var ramp: f32;
-    if port < 3u {{
+    if standard >= 0.5 {{
+        // PAL uses the same circuit and crossover; only the assumed sync/window changes.
+        if port < 3u {{
+            let t = {pal_h_start} + uv.x * {pal_h_len};
+            ramp = lzx_cadet_iv_trim(h_adj) * lzx_cadet_iv_cap(t, {pal_line}, {pal_h_sync}, {slope_h}, {tau_h});
+        }} else {{
+            let t = ({pal_v_start} + uv.y * {pal_rows}) * {pal_line};
+            ramp = lzx_cadet_iv_trim(v_adj) * lzx_cadet_iv_cap(t, {pal_field}, {pal_v_sync}, {slope_v}, {tau_v});
+        }}
+    }} else if port < 3u {{
         // Stage 7 (J8): H ramp at this column's time after H sync.
         let t = {h_start} + uv.x * {h_len};
         ramp = lzx_cadet_iv_trim(h_adj) * lzx_cadet_iv_cap(t, {line}, {h_sync}, {slope_h}, {tau_h});
@@ -254,10 +262,18 @@ fn device_lzx_cadet_iv_output(uv: vec2<f32>, time: f32, port: u32, h_adj: f32, v
     return vec4<f32>(v, v, v, 1.0);
 }}
 
-fn device_lzx_cadet_iv_process(uv: vec2<f32>, time: f32, h_adj: f32, v_adj: f32) -> vec4<f32> {{
-    return device_lzx_cadet_iv_output(uv, time, 0u, h_adj, v_adj);
+fn device_lzx_cadet_iv_process(uv: vec2<f32>, time: f32, h_adj: f32, v_adj: f32, standard: f32) -> vec4<f32> {{
+    return device_lzx_cadet_iv_output(uv, time, 0u, h_adj, v_adj, standard);
 }}
 "#,
+        pal_h_start = f(PAL.h_start),
+        pal_h_len = f(PAL.h_len),
+        pal_line = f(PAL.line),
+        pal_h_sync = f(PAL.h_sync),
+        pal_v_start = f(PAL.v_start_lines),
+        pal_rows = f(PAL.rows),
+        pal_field = f(PAL.field),
+        pal_v_sync = f(PAL.v_sync),
         h_start = f(s.h_start),
         h_len = f(s.h_len),
         line = f(s.line),
@@ -296,6 +312,8 @@ impl ShaderDevice for LzxCadetIv {
         vec![
             DeviceParameter::new("h_adj", "H ADJ (R1)", 0.0, 1.0, 1.0),
             DeviceParameter::new("v_adj", "V ADJ (R3)", 0.0, 1.0, 1.0),
+            // Timing supplied by sync, not a physical Cadet IV panel control. Threshold 0.5.
+            DeviceParameter::new("standard", "Timing (0 NTSC / 1 PAL)", 0.0, 1.0, 0.0),
         ]
     }
 
@@ -550,8 +568,8 @@ mod tests {
 
     /// Off-screen render for the comparison with the circuit (T-0375; research/devices/lzx_cadet_iv/run_all.sh).
     /// For trimmers 0.0, 0.5 and 1.0 (both set together, as in the simulation) and each of the six jacks,
-    /// composes the patch as the app does, renders 720×240 on the GPU and writes the red channel as raw
-    /// little-endian f32, top row first, to `$CADET_IV_DUMP_DIR/ntsc_pos<p>_<jack>.f32`. No judging here:
+    /// plus PAL trim 0.5, composes the patch as the app does, renders 720×240 NTSC or 720×288 PAL and writes the red channel as raw
+    /// little-endian f32, top row first, to `$CADET_IV_DUMP_DIR/<std>_pos<p>_<jack>.f32`. No judging here:
     /// faithful/compare_app.py reads these files. Needs a GPU, so it is ignored by default.
     #[test]
     #[ignore]
@@ -560,18 +578,25 @@ mod tests {
         use crate::gpu::DevicePatch;
         let dir = std::env::var("CADET_IV_DUMP_DIR").expect("set CADET_IV_DUMP_DIR");
         std::fs::create_dir_all(&dir).expect("dump dir");
-        let (w, h) = (720u32, 240u32);
         let mut manifest = format!(
-            "adapter: {}\nsize: {w}x{h}\nformat: f32 little-endian, red channel, row-major, top row first\n",
+            "adapter: {}\nsize: NTSC 720x240; PAL 720x288\nformat: f32 little-endian, red channel, row-major, top row first\n",
             adapter_summary().unwrap_or_else(|| "none".into())
         );
-        for pos in [0.0f32, 0.5, 1.0] {
+        for (std_name, std, pos, standard) in [
+            ("ntsc", NTSC, 0.0f32, 0.0),
+            ("ntsc", NTSC, 0.5, 0.0),
+            ("ntsc", NTSC, 1.0, 0.0),
+            ("pal", PAL, 0.5, 1.0),
+        ] {
+            let (w, h) = (720u32, std.rows as u32);
+            let model = CadetIvModel { std, h_adj: pos as f64, v_adj: pos as f64 };
             for (port, jack) in JACKS.iter().enumerate() {
                 let mut patch = DevicePatch::new();
                 let cadet = patch.add_device(Box::new(LzxCadetIv::new()), 0.0, 0.0);
                 let inst = patch.get_device_mut(cadet).unwrap();
                 inst.params.insert("h_adj".into(), pos);
                 inst.params.insert("v_adj".into(), pos);
+                inst.params.insert("standard".into(), standard);
                 patch.output_device = cadet;
                 if port > 0 {
                     let thru = patch.add_device(Box::new(Thru), 0.0, 100.0);
@@ -580,7 +605,16 @@ mod tests {
                 }
                 let px = render_patch_f32(&patch, w, h).expect("off-screen render");
                 let bytes: Vec<u8> = px.iter().flat_map(|p| p[0].to_le_bytes()).collect();
-                let name = format!("ntsc_pos{pos:.1}_{jack}.f32");
+                let mut worst = 0.0f64;
+                for (i, p) in px.iter().enumerate() {
+                    let u = (i as u32 % w) as f64 + 0.5;
+                    let v = (i as u32 / w) as f64 + 0.5;
+                    let want = model.jacks(u / w as f64, v / h as f64)[port];
+                    worst = worst.max((p[0] as f64 - want).abs());
+                }
+                println!("{std_name} trim {pos} {jack}: GPU vs CPU max diff {worst:.8}");
+                assert!(worst < 1e-4, "{std_name} {jack}: GPU differs from CPU by {worst}");
+                let name = format!("{std_name}_pos{pos:.1}_{jack}.f32");
                 std::fs::write(std::path::Path::new(&dir).join(&name), bytes).expect("write dump");
                 manifest += &format!("{name}: first {:.5} last {:.5}\n", px[0][0], px[px.len() - 1][0]);
             }
@@ -648,10 +682,11 @@ mod tests {
     }
 
     #[test]
-    fn device_has_six_jacks_and_two_trimmers() {
+    fn device_has_six_jacks_two_trimmers_and_timing() {
         let d = LzxCadetIv::new();
         assert_eq!(d.outputs().len(), 6);
-        assert_eq!(d.parameters().len(), 2);
+        assert_eq!(d.parameters().len(), 3);
+        assert_eq!(d.parameters()[2].default, 0.0);
         assert!(d.inputs().is_empty());
         assert!(d.shader_code().contains("fn device_lzx_cadet_iv_output("));
     }

@@ -3,7 +3,7 @@
 #   1. the ngspice simulation of the schematic        -> results/
 #   2. the reference values and their document gate    -> faithful/reference_check.txt
 #   3. the device's CPU-model tests against them       -> log in <repo>/.scratch/cadet_iv_app/
-#   4. an off-screen GPU render of the app's device     -> raw floats in <repo>/.scratch/cadet_iv_app/
+#   4. off-screen GPU renders: NTSC trims 0/0.5/1, PAL trim 0.5     -> raw floats in <repo>/.scratch/cadet_iv_app/
 #   5. FAITHFUL.md's checks, app against circuit       -> comparison/ (report.md, numbers.csv, pictures)
 # Needs ngspice (tested with ngspice-47), python3 (standard library only), cargo and a GPU.
 # A failed check is reported in comparison/report.md; it does not stop the script. A step that cannot
