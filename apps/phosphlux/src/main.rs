@@ -29,7 +29,7 @@ use crate::core::timing::{SyncGenerator, VideoStandard};
 use crate::gpu::renderer::Renderer;
 use crate::gpu::{DevicePatch, ShaderComposer};
 use crate::ui::node_editor::{
-    render_inspector, render_node_canvas, render_node_palette, AspectRatio, NodeEditor,
+    render_inspector, render_node_canvas, render_node_palette, AspectRatio, LfoState, NodeEditor,
 };
 use crate::ui::theme::apply_theme;
 
@@ -60,6 +60,7 @@ struct App {
 
 impl App {
     fn new() -> Self {
+        let (patch, node_editor) = Self::default_patch();
         Self {
             window: None,
             renderer: None,
@@ -68,8 +69,8 @@ impl App {
             egui_ctx: egui::Context::default(),
             egui_state: None,
             egui_renderer: None,
-            patch: Self::default_patch(),
-            node_editor: NodeEditor::new(),
+            patch,
+            node_editor,
             last_preview_size: (320, 240),
             redraw_count: 0,
             render_count: 0,
@@ -78,26 +79,25 @@ impl App {
         }
     }
 
-    /// Create the default patch: TestSignal -> PaikAbeColorizer (top-down flow)
-    fn default_patch() -> DevicePatch {
+    /// A playable Cadet IV patch, including its editor-side automation.
+    fn default_patch() -> (DevicePatch, NodeEditor) {
         let mut patch = DevicePatch::new();
+        let cadet = patch.add_device(Box::new(devices::LzxCadetIv::new()), 40.0, 0.0);
+        let wobulator = patch.add_device(Box::new(devices::PaikAbeWobulator::new()), 40.0, 140.0);
+        let colorizer = patch.add_device(Box::new(devices::PaikAbeColorizer::new()), 40.0, 270.0);
+        patch.connect(cadet, "h_tri", wobulator, "video_in");
+        patch.connect(wobulator, "video_out", colorizer, "video_in");
+        patch.output_device = colorizer;
 
-        // Top-down layout: signal generator at top, colorizer below
-        let signal_id = patch.add_device(
-            Box::new(devices::TestSignalGenerator::new()),
-            100.0,
-            50.0,
-        );
-        let colorizer_id = patch.add_device(
-            Box::new(devices::PaikAbeColorizer::new()),
-            100.0,
-            180.0,
-        );
-
-        patch.connect(signal_id, "video_out", colorizer_id, "video_in");
-        patch.output_device = colorizer_id;
-
-        patch
+        let mut editor = NodeEditor::new();
+        editor.pan = egui::vec2(40.0, 30.0);
+        editor.selected_node = Some(cadet);
+        editor.lfo_active.insert((cadet, "h_adj".into()), LfoState {
+            lo: 0.7,
+            hi: 1.0,
+            ..LfoState::default()
+        });
+        (patch, editor)
     }
 }
 
@@ -334,11 +334,12 @@ fn render_node_editor_layout(
             ui.menu_button("File", |ui| {
                 if ui.button("New Patch").clicked() {
                     *patch = DevicePatch::new();
+                    *node_editor = NodeEditor::new();
                     node_editor.graph_modified = true;
                     ui.close_menu();
                 }
                 if ui.button("Default Patch").clicked() {
-                    *patch = App::default_patch();
+                    (*patch, *node_editor) = App::default_patch();
                     node_editor.graph_modified = true;
                     ui.close_menu();
                 }
@@ -473,4 +474,93 @@ fn main() {
 
     let mut app = App::new();
     event_loop.run_app(&mut app).unwrap();
+}
+
+#[cfg(all(test, feature = "startup-checks"))]
+mod startup_checks {
+    use super::*;
+    use crate::gpu::offscreen::{render_patch_rgba8_at, rgb_png};
+
+    fn changed_pixels(a: &[[u8; 4]], b: &[[u8; 4]]) -> usize {
+        assert_eq!(a.len(), b.len());
+        a.iter().zip(b).filter(|(a, b)| a[..3] != b[..3]).count()
+    }
+
+    #[test]
+    #[ignore = "requires a GPU; writes frames only when PHOSPHLUX_STARTUP_FRAMES is set"]
+    fn startup_patch_moves_and_registry_controls_work() {
+        let (mut patch, editor) = App::default_patch();
+        let (width, height) = (640, 480);
+        assert!(!editor.lfo_active.is_empty());
+        assert!(editor.apply_lfos(&mut patch, 0.0));
+        let first =
+            render_patch_rgba8_at(&patch, width, height, 0.0).expect("startup patch at 0 seconds");
+        assert!(editor.apply_lfos(&mut patch, 1.5));
+        let second = render_patch_rgba8_at(&patch, width, height, 1.5)
+            .expect("startup patch at 1.5 seconds");
+        let changed = changed_pixels(&first, &second);
+        assert!(
+            changed > first.len() / 100,
+            "startup motion must change more than 1% of pixels"
+        );
+        println!(
+            "Startup 0.0s vs 1.5s: {changed}/{} display pixels differ",
+            first.len()
+        );
+        if let Ok(dir) = std::env::var("PHOSPHLUX_STARTUP_FRAMES") {
+            std::fs::create_dir_all(&dir).unwrap();
+            for (name, frame) in [
+                ("T-0521-startup-0s.png", &first),
+                ("T-0521-startup-1.5s.png", &second),
+            ] {
+                std::fs::write(
+                    std::path::Path::new(&dir).join(name),
+                    rgb_png(width, height, frame),
+                )
+                .unwrap();
+            }
+        }
+
+        // Same factories, graph connections and parameter storage used by the palette,
+        // socket drag and inspector; this does not simulate mouse interaction.
+        let cadet = patch.add_device(
+            ui::device_registry::create_device("lzx_cadet_iv").expect("Cadet IV palette factory"),
+            40.0,
+            390.0,
+        );
+        let wobulator = patch
+            .devices
+            .iter()
+            .find(|d| d.device.device_id() == "paik_abe_wobulator")
+            .unwrap()
+            .instance_id;
+        patch.connect(cadet, "v_tri", wobulator, "video_in");
+        let wired =
+            render_patch_rgba8_at(&patch, width, height, 1.5).expect("registry Cadet IV wired");
+        let wire_changed = changed_pixels(&second, &wired);
+        assert!(
+            wire_changed > first.len() / 100,
+            "new jack must reach the output"
+        );
+        patch
+            .get_device_mut(cadet)
+            .unwrap()
+            .params
+            .insert("v_adj".into(), 0.5);
+        let moved = render_patch_rgba8_at(&patch, width, height, 1.5)
+            .expect("registry Cadet IV trimmer changed");
+        let control_changed = changed_pixels(&wired, &moved);
+        assert!(
+            control_changed > first.len() / 100,
+            "trimmer must change the output"
+        );
+        println!(
+            "Registry add + V triangle wiring: {wire_changed}/{} pixels differ",
+            first.len()
+        );
+        println!(
+            "V ADJ 1.0 -> 0.5: {control_changed}/{} pixels differ",
+            first.len()
+        );
+    }
 }

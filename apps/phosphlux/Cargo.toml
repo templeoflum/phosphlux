@@ -8,6 +8,10 @@ description = "Phosphlux - Real-time GPU analog video synthesizer with node grap
 keywords = ["video-synthesis", "wgpu", "analog", "graphics", "real-time"]
 categories = ["graphics", "multimedia", "rendering"]
 
+[features]
+# Opt-in GPU playback checks keep the circuit comparison test inventory stable.
+startup-checks = []
+
 [dependencies]
 wgpu.workspace = true
 pollster.workspace = true
