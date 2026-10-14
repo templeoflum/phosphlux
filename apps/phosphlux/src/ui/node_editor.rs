@@ -1193,6 +1193,24 @@ pub fn render_inspector(ui: &mut egui::Ui, editor: &mut NodeEditor, patch: &mut 
                         .map(|(_, v)| *v)
                         .unwrap_or(param.default);
 
+                    // Selector switch: one button per position, no LFO
+                    if !param.choices.is_empty() {
+                        let mut val = current.round();
+                        let changed = ui.horizontal(|ui| {
+                            let mut changed = false;
+                            for (i, choice) in param.choices.iter().enumerate() {
+                                changed |= ui.selectable_value(&mut val, i as f32, *choice).changed();
+                            }
+                            ui.label(&param.display_name);
+                            changed
+                        }).inner;
+                        if changed && let Some(device) = patch.get_device_mut(node_id) {
+                            device.params.insert(param.name.clone(), val);
+                            editor.params_modified = true;
+                        }
+                        continue;
+                    }
+
                     let lfo_key = (node_id, param.name.clone());
                     let lfo_state = editor.lfo_active.get(&lfo_key).cloned();
                     let lfo_speed = lfo_state.as_ref().map(|s| s.speed);

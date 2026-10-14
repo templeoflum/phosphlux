@@ -121,6 +121,8 @@ pub struct DeviceParameter {
     pub default: f32,
     /// Unit (e.g., "Hz", "V", "%")
     pub unit: String,
+    /// Positions of a selector switch; position i has value i. Empty means a slider.
+    pub choices: Vec<&'static str>,
 }
 
 impl DeviceParameter {
@@ -132,11 +134,17 @@ impl DeviceParameter {
             max,
             default,
             unit: String::new(),
+            choices: Vec::new(),
         }
     }
 
     pub fn with_unit(mut self, unit: &str) -> Self {
         self.unit = unit.to_string();
+        self
+    }
+
+    pub fn with_choices(mut self, choices: &[&'static str]) -> Self {
+        self.choices = choices.to_vec();
         self
     }
 }

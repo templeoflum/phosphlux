@@ -312,8 +312,9 @@ impl ShaderDevice for LzxCadetIv {
         vec![
             DeviceParameter::new("h_adj", "H ADJ (R1)", 0.0, 1.0, 1.0),
             DeviceParameter::new("v_adj", "V ADJ (R3)", 0.0, 1.0, 1.0),
-            // Timing supplied by sync, not a physical Cadet IV panel control. Threshold 0.5.
-            DeviceParameter::new("standard", "Timing (0 NTSC / 1 PAL)", 0.0, 1.0, 0.0),
+            // Timing supplied by sync, not a physical Cadet IV panel control. 0 NTSC, 1 PAL;
+            // the shader's threshold is 0.5.
+            DeviceParameter::new("standard", "Timing", 0.0, 1.0, 0.0).with_choices(&["NTSC", "PAL"]),
         ]
     }
 
@@ -687,6 +688,7 @@ mod tests {
         assert_eq!(d.outputs().len(), 6);
         assert_eq!(d.parameters().len(), 3);
         assert_eq!(d.parameters()[2].default, 0.0);
+        assert_eq!(d.parameters()[2].choices, ["NTSC", "PAL"]);
         assert!(d.inputs().is_empty());
         assert!(d.shader_code().contains("fn device_lzx_cadet_iv_output("));
     }

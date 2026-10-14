@@ -34,7 +34,7 @@ Wobulator samples for each of the six jacks.
 
 ## Timing (T-0433)
 
-The app device exposes **Timing (0 NTSC / 1 PAL)** alongside the two trimmers.
+The app device exposes **Timing**, an NTSC / PAL switch (stored as 0 / 1), alongside the two trimmers.
 Values below 0.5 select NTSC; values at or above 0.5 select PAL. NTSC is the default.
 This setting represents the sync standard supplied to the module, not a physical panel control.
 Both standards use the same circuit constants and the unchanged H-triangle crossover correction.
