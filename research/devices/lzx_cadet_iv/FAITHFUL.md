@@ -1,7 +1,7 @@
 # What "faithful" means for the Cadet IV (T-0293; grey start restored in T-0352)
 
-**Rule: Phosphlux's Cadet IV must look like the simulated circuit, by eye and by the numbers below. Today it doesn't: it
-starts black where the circuit starts grey (sync ends before the picture begins). Making it match is the next phase.**
+**Rule: Phosphlux's Cadet IV must look like the simulated circuit, by eye and by the numbers below. Since T-0374 it does:
+the app starts grey like the circuit, and all 120 checks in [`comparison/report.md`](comparison/report.md) pass.**
 The latest comparison, labelled *reference (circuit)*, *app today* and *difference*, is
 [`faithful/try3_side_by_side.png`](faithful/try3_side_by_side.png) ([`faithful/TRY3.md`](faithful/TRY3.md)).
 
@@ -76,8 +76,8 @@ is visible is untested (RATIONALE §2).
 **The circuit starts grey, and the app must too.** The ramp is released at the end of sync and rises through the back
 porch before the assumed picture starts: 0.0837 V at the first H column and 0.069 V at the first V row, at trimmer 1.0.
 This is in the circuit as drawn (reset driven only by sync, Blanking not connected), not in the simulation or the
-mapping (TRY2). How grey depends on the assumed picture window, which LZX does not state. The app today starts at black,
-so it fails rows 1 and 2 (TRY3).
+mapping (TRY2). How grey depends on the assumed picture window, which LZX does not state. The app started at black
+and failed rows 1 and 2 (TRY3). Since T-0374 it starts grey and passes them (`comparison/report.md`).
 
 ## 3. Left out for now
 
