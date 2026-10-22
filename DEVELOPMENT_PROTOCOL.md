@@ -1,6 +1,6 @@
 # Phosphlux Development Protocol v1.0
 
-**Adapted from:** Scientific Collaboration Protocol v1.0
+**Adapted from:** Scientific Collaboration Protocol v1.0 (retired 22 Oct 2026; archived at `archive/scientific_collaboration_protocol_v1.0.md`)
 **Purpose:** Machine-verifiable project state that survives AI context loss
 **Created:** 2026-01-28
 
@@ -760,7 +760,7 @@ Before marking any shader feature complete, verify all items:
 ## Document Metadata
 
 **Version:** 1.1
-**Adapted from:** Scientific Collaboration Protocol v1.0
+**Adapted from:** Scientific Collaboration Protocol v1.0 (retired 22 Oct 2026; archived at `archive/scientific_collaboration_protocol_v1.0.md`)
 **Created:** 2026-01-28
 **Updated:** 2026-01-28 - Added Research Phase (Section 6.0), three-tier gates (Section 9.1), verification checklist (Section 14)
 **For project:** Phosphlux (analog video synthesizer)
